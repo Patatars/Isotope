@@ -13,22 +13,21 @@ jobs:
     - name: Checkout project
       uses: actions/checkout@v4
       with:
-        lfs: true  # если у тебя большие файлы в Git LFS
+        lfs: true  # если у тебя большие ассеты
 
     - name: Set up Git for Unreal
       run: |
         git config --global url."https://github.com/".insteadOf git@github.com:
-        git config --global url."https://${{ secrets.GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+        git config --global url."https://${{ secrets.EPIC_GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
-    - name: Clone Unreal Engine
+    - name: Clone Unreal Engine 5.6
       env:
-      	GITHUB_TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
       run: |
-    	git clone -b 5.6 https://${{ secrets.EPIC_GITHUB_TOKEN }}@github.com/EpicGames/UnrealEngine.git
-    	cd UnrealEngine
-    	Setup.bat
-    	GenerateProjectFiles.bat
-
+        git clone -b 5.6 https://github.com/EpicGames/UnrealEngine.git
+        cd UnrealEngine
+        Setup.bat
+        GenerateProjectFiles.bat
 
     - name: Build Unreal Engine
       run: |
@@ -44,7 +43,7 @@ jobs:
           -cook -allmaps -build -stage -pak -archive ^
           -archivedirectory="${{ github.workspace }}\BuildOutput"
 
-    - name: Upload artifact
+    - name: Upload server artifact
       uses: actions/upload-artifact@v4
       with:
         name: Isotope2Server
