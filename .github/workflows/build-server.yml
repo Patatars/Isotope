@@ -3,48 +3,54 @@ name: Build Dedicated Server
 on:
   workflow_dispatch:
   push:
-    branches: [ main ]
+    branches:
+      - main
+      - master
 
 jobs:
-  build:
+  build-server:
+    name: Build Isotope2 Dedicated Server
     runs-on: windows-latest
 
+    env:
+      UE_VERSION: 5.6.1
+      PROJECT_NAME: Isotope2
+      EPIC_GITHUB_TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
+
     steps:
-    - name: Checkout project
-      uses: actions/checkout@v4
-      with:
-        lfs: true  # если у тебя большие ассеты
+      # 1️⃣ Клонируем репозиторий с проектом
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          lfs: true
 
-    - name: Set up Git for Unreal
-      run: |
-        git config --global url."https://github.com/".insteadOf git@github.com:
-        git config --global url."https://${{ secrets.EPIC_GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
+      # 2️⃣ Настраиваем доступ к приватным UE-репам (Engine source)
+      - name: Authenticate with Epic Games GitHub
+        run: |
+          git config --global url."https://${{ secrets.EPIC_GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
-    - name: Clone Unreal Engine 5.6
-      env:
-        GITHUB_TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
-      run: |
-        git clone -b 5.6 https://github.com/EpicGames/UnrealEngine.git
-        cd UnrealEngine
-        Setup.bat
-        GenerateProjectFiles.bat
+      # 3️⃣ Устанавливаем Unreal Engine (официальный Action)
+      - name: Setup Unreal Engine
+        uses: EpicGames/ue-build@v2
+        with:
+          version: ${{ env.UE_VERSION }}
+          token: ${{ secrets.EPIC_GITHUB_TOKEN }}
 
-    - name: Build Unreal Engine
-      run: |
-        cd UnrealEngine
-        msbuild UE5.sln /m /p:Configuration=Development /p:Platform="Win64"
+      # 4️⃣ Собираем Dedicated Server
+      - name: Build Dedicated Server
+        run: |
+          echo "Building Dedicated Server for $env:PROJECT_NAME..."
+          ue4 build $env:PROJECT_NAME Server Win64 Development -project="$(pwd)\$env:PROJECT_NAME.uproject" -waitmutex -NoHotReloadFromIDE
 
-    - name: Build Dedicated Server
-      run: |
-        cd UnrealEngine
-        Engine\Build\BatchFiles\RunUAT.bat BuildCookRun ^
-          -project="${{ github.workspace }}\Isotope2.uproject" ^
-          -noP4 -server -serverconfig=Development ^
-          -cook -allmaps -build -stage -pak -archive ^
-          -archivedirectory="${{ github.workspace }}\BuildOutput"
+      # 5️⃣ Собираем билд для упаковки
+      - name: Package Dedicated Server
+        run: |
+          echo "Packaging Dedicated Server..."
+          ue4 package $env:PROJECT_NAME Server Win64 Development -project="$(pwd)\$env:PROJECT_NAME.uproject" -stage -archive -archivedirectory="$(pwd)\BuildOutput"
 
-    - name: Upload server artifact
-      uses: actions/upload-artifact@v4
-      with:
-        name: Isotope2Server
-        path: BuildOutput/**
+      # 6️⃣ Загружаем билд как артефакт
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Isotope2-DedicatedServer
+          path: BuildOutput/
