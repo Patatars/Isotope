@@ -1,73 +1,83 @@
-name: Build Windows Dedicated Server
+name: Build UE5 Dedicated Server
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
-  build-server:
-    runs-on: windows-2022
-
+  build:
+    runs-on: windows-latest
+    
     steps:
-      - name: Checkout project
-        uses: actions/checkout@v4
-
-      - name: Setup Git credentials for Epic
-        run: |
-          git config --global url."https://${{ secrets.EPIC_GITHUB_TOKEN }}:x-oauth-basic@github.com/".insteadOf "https://github.com/"
-          git config --global core.longpaths true
-
-      - name: Clone Unreal Engine 5.6.1
-        run: |
-          git clone --branch 5.6.1 --depth=1 https://github.com/EpicGames/UnrealEngine.git
-        env:
-          GIT_TERMINAL_PROMPT: 0
-
-      - name: Install .NET 8 SDK
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '8.0.x'
-
-      - name: Run Setup.bat
-        working-directory: UnrealEngine
-        run: |
-          echo "Running Unreal Setup..."
-          cmd /c Setup.bat
-
-      - name: Generate Project Files
-        working-directory: UnrealEngine
-        run: |
-          echo "Generating project files..."
-          cmd /c GenerateProjectFiles.bat
-
-      - name: Build Unreal Engine (Development Editor)
-        working-directory: UnrealEngine
-        run: |
-          echo "Building Unreal Engine..."
-          cmd /c Engine\\Build\\BatchFiles\\Build.bat UnrealEditor Win64 Development -WaitMutex -FromMsBuild
-
-      - name: Build Dedicated Server
-        run: |
-          echo "Building dedicated server..."
-          cmd /c UnrealEngine\\Engine\\Build\\BatchFiles\\RunUAT.bat BuildCookRun ^
-            -project="$(pwd)\\Isotope2\\Isotope2.uproject" ^
-            -noP4 ^
-            -platform=Win64 ^
-            -clientconfig=Development ^
-            -serverconfig=Development ^
-            -cook ^
-            -build ^
-            -stage ^
-            -pak ^
-            -archive ^
-            -archivedirectory="$(pwd)\\BuildOutput" ^
-            -server ^
-            -nocompileeditor ^
-            -utf8output
-
-      - name: Upload Build Artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: Isotope2-DedicatedServer
-          path: BuildOutput/
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+      with:
+        lfs: true
+    
+    - name: Checkout UE5 Source
+      uses: actions/checkout@v4
+      with:
+        repository: EpicGames/UnrealEngine
+        ref: 5.6.1-release
+        token: ${{ secrets.EPIC_GITHUB_TOKEN }}
+        path: UnrealEngine
+        lfs: true
+    
+    - name: Setup UE5 Build Tools
+      run: |
+        cd UnrealEngine
+        .\Setup.bat
+        .\GenerateProjectFiles.bat
+      shell: cmd
+    
+    - name: Build UnrealBuildTool
+      run: |
+        cd UnrealEngine
+        msbuild Engine\Source\Programs\UnrealBuildTool\UnrealBuildTool.csproj /p:Configuration=Development /p:Platform=AnyCPU
+      shell: cmd
+    
+    - name: Generate Project Files
+      run: |
+        cd ${{ github.workspace }}
+        ${{ github.workspace }}\UnrealEngine\Engine\Build\BatchFiles\Build.bat -projectfiles -project="${{ github.workspace }}\Isotope2.uproject" -game -engine
+      shell: cmd
+    
+    - name: Build Dedicated Server
+      run: |
+        cd UnrealEngine
+        .\Engine\Build\BatchFiles\RunUAT.bat BuildCookRun `
+          -project="${{ github.workspace }}\Isotope2.uproject" `
+          -noP4 `
+          -platform=Win64 `
+          -serverplatform=Win64 `
+          -clientconfig=Development `
+          -serverconfig=Development `
+          -cook `
+          -server `
+          -noclient `
+          -build `
+          -stage `
+          -pak `
+          -archive `
+          -archivedirectory="${{ github.workspace }}\Build"
+      shell: powershell
+    
+    - name: Upload Server Build
+      uses: actions/upload-artifact@v4
+      with:
+        name: Isotope2-DedicatedServer-Win64
+        path: Build/WindowsServer/
+        retention-days: 30
+    
+    - name: Create Release (Optional)
+      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: Build/WindowsServer/**/*
+        tag_name: server-${{ github.run_number }}
+        name: Dedicated Server Build ${{ github.run_number }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
