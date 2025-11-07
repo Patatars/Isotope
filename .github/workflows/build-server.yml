@@ -1,15 +1,13 @@
-name: Build UE5 Dedicated Server
+name: Build UE5 Dedicated Server (Docker)
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
     branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: windows-latest
+    runs-on: ubuntu-latest
     
     steps:
     - name: Checkout Repository
@@ -17,67 +15,38 @@ jobs:
       with:
         lfs: true
     
-    - name: Checkout UE5 Source
-      uses: actions/checkout@v4
-      with:
-        repository: EpicGames/UnrealEngine
-        ref: 5.6.1-release
-        token: ${{ secrets.EPIC_GITHUB_TOKEN }}
-        path: UnrealEngine
-        lfs: true
-    
-    - name: Setup UE5 Build Tools
+    - name: Free Disk Space
       run: |
-        cd UnrealEngine
-        .\Setup.bat
-        .\GenerateProjectFiles.bat
-      shell: cmd
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf "/usr/local/share/boost"
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
     
-    - name: Build UnrealBuildTool
+    - name: Build Server in Docker
       run: |
-        cd UnrealEngine
-        msbuild Engine\Source\Programs\UnrealBuildTool\UnrealBuildTool.csproj /p:Configuration=Development /p:Platform=AnyCPU
-      shell: cmd
-    
-    - name: Generate Project Files
-      run: |
-        cd ${{ github.workspace }}
-        ${{ github.workspace }}\UnrealEngine\Engine\Build\BatchFiles\Build.bat -projectfiles -project="${{ github.workspace }}\Isotope2.uproject" -game -engine
-      shell: cmd
-    
-    - name: Build Dedicated Server
-      run: |
-        cd UnrealEngine
-        .\Engine\Build\BatchFiles\RunUAT.bat BuildCookRun `
-          -project="${{ github.workspace }}\Isotope2.uproject" `
-          -noP4 `
-          -platform=Win64 `
-          -serverplatform=Win64 `
-          -clientconfig=Development `
-          -serverconfig=Development `
-          -cook `
-          -server `
-          -noclient `
-          -build `
-          -stage `
-          -pak `
-          -archive `
-          -archivedirectory="${{ github.workspace }}\Build"
-      shell: powershell
+        docker run --rm \
+          -v ${{ github.workspace }}:/project \
+          ghcr.io/epicgames/unreal-engine:dev-5.6 \
+          /bin/bash -c "\
+            cd /project && \
+            /UnrealEngine/Engine/Build/BatchFiles/RunUAT.sh BuildCookRun \
+              -project=/project/Isotope2.uproject \
+              -noP4 \
+              -platform=Linux \
+              -clientconfig=Development \
+              -serverconfig=Development \
+              -cook \
+              -server \
+              -noclient \
+              -build \
+              -stage \
+              -pak \
+              -archive \
+              -archivedirectory=/project/Build"
     
     - name: Upload Server Build
       uses: actions/upload-artifact@v4
       with:
-        name: Isotope2-DedicatedServer-Win64
-        path: Build/WindowsServer/
+        name: Isotope2-DedicatedServer-Linux
+        path: Build/LinuxServer/
         retention-days: 30
-    
-    - name: Create Release (Optional)
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-      uses: softprops/action-gh-release@v1
-      with:
-        files: Build/WindowsServer/**/*
-        tag_name: server-${{ github.run_number }}
-        name: Dedicated Server Build ${{ github.run_number }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
