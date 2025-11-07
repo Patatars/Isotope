@@ -1,4 +1,4 @@
-name: Build Dedicated Server
+name: Build Dedicated Server (Windows)
 
 on:
   workflow_dispatch:
@@ -8,49 +8,86 @@ on:
       - master
 
 jobs:
-  build-server:
-    name: Build Isotope2 Dedicated Server
+  build-dedicated-server:
     runs-on: windows-latest
 
     env:
-      UE_VERSION: 5.6.1
       PROJECT_NAME: Isotope2
-      EPIC_GITHUB_TOKEN: ${{ secrets.EPIC_GITHUB_TOKEN }}
+      UE_BRANCH: "5.6"
+      ENGINE_PATH: D:\a\UnrealEngine
+      PROJECT_PATH: D:\a\Isotope2
 
     steps:
-      # 1️⃣ Клонируем репозиторий с проектом
-      - name: Checkout repository
+      # 1️⃣ Клонируем твой проект
+      - name: Checkout Project
         uses: actions/checkout@v4
         with:
           lfs: true
 
-      # 2️⃣ Настраиваем доступ к приватным UE-репам (Engine source)
-      - name: Authenticate with Epic Games GitHub
+      # 2️⃣ Настраиваем Git для Epic Games
+      - name: Configure Git for Epic access
         run: |
           git config --global url."https://${{ secrets.EPIC_GITHUB_TOKEN }}@github.com/".insteadOf "https://github.com/"
 
-      # 3️⃣ Устанавливаем Unreal Engine (официальный Action)
-      - name: Setup Unreal Engine
-        uses: EpicGames/ue-build@v2
+      # 3️⃣ Проверяем и кэшируем Unreal Engine
+      - name: Cache Unreal Engine
+        id: ue-cache
+        uses: actions/cache@v4
         with:
-          version: ${{ env.UE_VERSION }}
-          token: ${{ secrets.EPIC_GITHUB_TOKEN }}
+          path: D:\a\UnrealEngine
+          key: UE5.6.1-${{ runner.os }}-${{ env.UE_BRANCH }}
 
-      # 4️⃣ Собираем Dedicated Server
-      - name: Build Dedicated Server
+      # 4️⃣ Если нет кэша — клонируем UE и подготавливаем
+      - name: Clone and setup Unreal Engine
+        if: steps.ue-cache.outputs.cache-hit != 'true'
         run: |
-          echo "Building Dedicated Server for $env:PROJECT_NAME..."
-          ue4 build $env:PROJECT_NAME Server Win64 Development -project="$(pwd)\$env:PROJECT_NAME.uproject" -waitmutex -NoHotReloadFromIDE
+          echo "Cloning Unreal Engine source..."
+          git clone --branch $env:UE_BRANCH --depth=1 https://github.com/EpicGames/UnrealEngine.git "$env:ENGINE_PATH"
 
-      # 5️⃣ Собираем билд для упаковки
+          echo "Running Setup.bat..."
+          cd "$env:ENGINE_PATH"
+          cmd /c Setup.bat
+
+          echo "Generating project files..."
+          cmd /c GenerateProjectFiles.bat
+        shell: pwsh
+
+      # 5️⃣ Проверяем, что движок установлен
+      - name: Verify Unreal Engine path
+        run: |
+          if (!(Test-Path "$env:ENGINE_PATH\Engine\Binaries")) {
+            Write-Host "ERROR: Unreal Engine binaries not found!"
+            exit 1
+          } else {
+            Write-Host "✅ Unreal Engine ready."
+          }
+        shell: pwsh
+
+      # 6️⃣ Собираем движок (если не собран в кэше)
+      - name: Build Unreal Engine
+        if: steps.ue-cache.outputs.cache-hit != 'true'
+        run: |
+          cd "$env:ENGINE_PATH"
+          cmd /c "Engine\Build\BatchFiles\Build.bat UnrealEditor Win64 Development"
+        shell: pwsh
+
+      # 7️⃣ Собираем Dedicated Server проекта
+      - name: Build Dedicated Server target
+        run: |
+          cd "$env:ENGINE_PATH"
+          cmd /c "Engine\Build\BatchFiles\Build.bat $env:PROJECT_NAME Server Win64 Development -Project=\"$env:PROJECT_PATH\$env:PROJECT_NAME.uproject\" -WaitMutex -NoHotReloadFromIDE"
+        shell: pwsh
+
+      # 8️⃣ Пакуем билд
       - name: Package Dedicated Server
         run: |
-          echo "Packaging Dedicated Server..."
-          ue4 package $env:PROJECT_NAME Server Win64 Development -project="$(pwd)\$env:PROJECT_NAME.uproject" -stage -archive -archivedirectory="$(pwd)\BuildOutput"
+          cd "$env:ENGINE_PATH"
+          cmd /c "Engine\Build\BatchFiles\RunUAT.bat BuildCookRun -project=\"$env:PROJECT_PATH\$env:PROJECT_NAME.uproject\" -server -serverconfig=Development -noP4 -cook -allmaps -stage -pak -archive -archivedirectory=\"$env:PROJECT_PATH\BuildOutput\" -targetplatform=Win64"
+        shell: pwsh
 
-      # 6️⃣ Загружаем билд как артефакт
+      # 9️⃣ Загружаем билд как артефакт
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Isotope2-DedicatedServer
+          name: Isotope2-DedicatedServer-Win64
           path: BuildOutput/
