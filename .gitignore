@@ -1,7 +1,11 @@
 Binaries
+Build
 DerivedDataCache
 Intermediate
 Saved
+Windows
+*.pub
+github
 .vscode
 .vs
 *.VC.db
