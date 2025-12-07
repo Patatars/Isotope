@@ -13,6 +13,12 @@ class ISOTOPE2_API ACharacterOverrideOnRep : public ACharacter
 public:
     ACharacterOverrideOnRep();
 
+    virtual void OnRep_Controller() override;
+	// On replicated controller event for Blueprint.
+    UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Controller|Replication")
+    void OnReplicatedController();
+    virtual void OnReplicatedController_Implementation();
+
     virtual void OnRep_PlayerState() override;
 
     // Единое событие для BP: вызывается и на клиенте, и на сервере

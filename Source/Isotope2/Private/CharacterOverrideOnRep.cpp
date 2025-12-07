@@ -27,6 +27,18 @@ void ACharacterOverrideOnRep::OnRep_PlayerState()
     }
 }
 
+void ACharacterOverrideOnRep::OnRep_Controller()
+{
+    Super::OnRep_Controller();
+    OnReplicatedController();
+}
+
+void ACharacterOverrideOnRep::OnReplicatedController_Implementation()
+{
+    UE_LOG(LogTemp, Log, TEXT("OnReplicatedController called on %s Role=%d"), *GetName(), (int32)GetLocalRole());
+    // Ваша логика для клиента (можно реализовать в Blueprint)
+}
+
 void ACharacterOverrideOnRep::OnReplicatedPlayerState_Implementation()
 {
     UE_LOG(LogTemp, Log, TEXT("OnReplicatedPlayerState called on %s Role=%d"), *GetName(), (int32)GetLocalRole());
