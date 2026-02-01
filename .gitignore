@@ -6,6 +6,7 @@ Intermediate
 Saved
 Windows
 *.pub
+*.zip
 github
 .vscode
 .vs
