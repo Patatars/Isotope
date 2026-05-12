@@ -18,3 +18,10 @@ github
 *.suo
 *.xcodeproj
 *.xcworkspace
+Build.bat
+BuildOutput
+BuildOutput*
+BuildScripts
+run.txt
+Android
+.idea

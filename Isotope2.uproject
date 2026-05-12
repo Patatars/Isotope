@@ -1,6 +1,6 @@
 {
 	"FileVersion": 3,
-	"EngineAssociation": "5.6",
+	"EngineAssociation": "{432F7572-4C45-E37D-8738-CFA85AB4077C}",
 	"Category": "",
 	"Description": "",
 	"Modules": [
@@ -60,6 +60,13 @@
 		{
 			"Name": "RigVM",
 			"Enabled": true
+		},
+		{
+			"Name": "OnlineSubsystemGooglePlay",
+			"Enabled": false,
+			"SupportedTargetPlatforms": [
+				"Android"
+			]
 		}
 	]
 }
