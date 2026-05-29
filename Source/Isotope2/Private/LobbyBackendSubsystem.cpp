@@ -411,6 +411,42 @@ void ULobbyBackendSubsystem::ReportServerReady()
     }
 }
 
+void ULobbyBackendSubsystem::ReportServerShutdown()
+{
+    UWorld* World = GetWorld();
+    UE_LOG(LogTemp, Warning, TEXT("ReportServerShutdown called NetMode is %d."), static_cast<int32>(World->GetNetMode()));
+
+    if (World && World->GetNetMode() != NM_DedicatedServer)
+    {
+        UE_LOG(LogTemp, Warning, TEXT("ReportServerShutdown called but this is NOT a Dedicated Server. Skipping."));
+        return;
+    }
+
+    FString MatchId;
+    if (FParse::Value(FCommandLine::Get(), TEXT("MatchId="), MatchId))
+    {
+        UE_LOG(LogTemp, Log, TEXT("SERVER: Reporting shutdown for MatchId: %s"), *MatchId);
+
+        FString Endpoint = "/matchmaking/servers/" + MatchId + "/shutdown";
+
+        SendRequest("POST", Endpoint, "", FOnBackendRequestComplete::CreateLambda([](bool bSuccess, const FString& ResponseStr)
+            {
+                if (bSuccess)
+                {
+                    UE_LOG(LogTemp, Log, TEXT("SERVER: Matchmaking Service successfully notified about shutdown."));
+                }
+                else
+                {
+                    UE_LOG(LogTemp, Error, TEXT("SERVER: Failed to notify Matchmaking Service about shutdown! Response: %s"), *ResponseStr);
+                }
+            }));
+    }
+    else
+    {
+        UE_LOG(LogTemp, Error, TEXT("SERVER: Critical Error! -MatchId parameter was not found in command line arguments!"));
+    }
+}
+
 FMatchData ULobbyBackendSubsystem::ParseMatchData(const FString& JsonResponse)
 {
     FMatchData MatchData;

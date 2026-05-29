@@ -87,6 +87,9 @@ public:
     UFUNCTION(BlueprintCallable, Category = "Backend|Server")
     void ReportServerReady();
 
+    UFUNCTION(BlueprintCallable, Category = "Backend|Server")
+    void ReportServerShutdown();
+
 private:
     void SendRequest(const FString& Verb, const FString& Endpoint, const FString& Body, FOnBackendRequestComplete OnComplete);
     void OnResponseReceived(FHttpRequestPtr Request, FHttpResponsePtr Response, bool bSuccess, FOnBackendRequestComplete OnComplete);

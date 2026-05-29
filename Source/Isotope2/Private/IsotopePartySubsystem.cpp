@@ -7,10 +7,13 @@
 #include "OnlineSubsystemUtils.h"
 #include "GameFramework/PlayerState.h"
 #include "eos_connect_types.h"
+#include "eos_sdk.h"
+#include "eos_lobby.h"
 #include "EOSShared.h"
-#include "Online/OnlineServices.h" // Для GetServices() и IOnlineServicesPtr
-#include "Online/Auth.h"           // Для общего интерфейса Auth
-#include "Online/AuthEOS.h" 
+#include "IEOSSDKManager.h"
+#include "Online/OnlineServices.h"
+#include "Online/Auth.h"
+#include "Online/AuthEOS.h"
 #include <Online/OnlineIdEOSGS.h>
 
 
@@ -226,6 +229,75 @@ void UIsotopePartySubsystem::HandleUILobbyJoinRequested(const UE::Online::FUILob
 	}
 }
 
+void UIsotopePartySubsystem::HandleLobbyLeft(const UE::Online::FLobbyLeft& EventParams)
+{
+	// Событие срабатывает, когда мы покинули лобби
+	// ВАЖНО: это событие в OnlineServicesEOSGS НЕ срабатывает от overlay в UE 5.6
+	// Функционал AddNotifyLeaveLobbyRequested есть только в старом OnlineSubsystemEOS
+	UE_LOG(LogIsotopePartySubsystem, Log, TEXT("LobbyLeft event received"));
+
+	// Очищаем кэш
+	bHasCachedLobby = false;
+	bHasCachedNativeLobbyId = false;
+	CachedLobby = FIsotopeLobbyBP{};
+	CachedNativeLobbyId = FLobbyId{};
+}
+
+void EOS_CALL UIsotopePartySubsystem::OnLeaveLobbyRequestedCallback(const EOS_Lobby_LeaveLobbyRequestedCallbackInfo* Data)
+{
+	if (!Data || !Data->ClientData)
+	{
+		return;
+	}
+
+	UIsotopePartySubsystem* This = static_cast<UIsotopePartySubsystem*>(Data->ClientData);
+	if (This)
+	{
+		This->HandleEOSLeaveLobbyRequested(Data->LobbyId);
+	}
+}
+
+void UIsotopePartySubsystem::HandleEOSLeaveLobbyRequested(const char* LobbyId)
+{
+	UE_LOG(LogIsotopePartySubsystem, Log, TEXT("EOS LeaveLobbyRequested callback - user clicked Leave Party in overlay"));
+
+	if (!LocalAccountId.IsValid() || !bHasCachedNativeLobbyId)
+	{
+		UE_LOG(LogIsotopePartySubsystem, Warning, TEXT("Cannot leave lobby: not in a lobby"));
+		return;
+	}
+
+	// Сохраняем предыдущее состояние для события
+	const FIsotopeLobbyBP PreviousLobby = CachedLobby;
+
+	// Выходим из лобби через Online Services API
+	FLeaveLobby::Params Params;
+	Params.LocalAccountId = LocalAccountId;
+	Params.LobbyId = CachedNativeLobbyId;
+
+	// Очищаем кэш
+	bHasCachedLobby = false;
+	bHasCachedNativeLobbyId = false;
+	CachedLobby = FIsotopeLobbyBP{};
+	CachedNativeLobbyId = FLobbyId{};
+
+	Lobbies->LeaveLobby(MoveTemp(Params))
+		.OnComplete([this, PreviousLobby](const TOnlineResult<FLeaveLobby>& Result)
+			{
+				if (!Result.IsOk())
+				{
+					const FString ErrStr = Result.GetErrorValue().GetLogString();
+					UE_LOG(LogIsotopePartySubsystem, Error,
+						TEXT("LeaveLobby failed: %s"), *ErrStr);
+					OnOnlineError.Broadcast(FString::Printf(TEXT("Leave failed: %s"), *ErrStr));
+					return;
+				}
+
+				UE_LOG(LogIsotopePartySubsystem, Log, TEXT("Successfully left lobby via overlay"));
+				OnLobbyLeft.Broadcast(PreviousLobby);
+			});
+}
+
 
 
 void UIsotopePartySubsystem::Deinitialize()
@@ -233,6 +305,31 @@ void UIsotopePartySubsystem::Deinitialize()
 	StopPolling();
 
 	UILobbyJoinRequestedHandle.Unbind();
+	LobbyLeftHandle.Unbind();
+
+	// Отписываемся от EOS SDK callback
+	if (LeaveLobbyRequestedNotificationId != EOS_INVALID_NOTIFICATIONID)
+	{
+		IEOSSDKManager* SDKManager = IEOSSDKManager::Get();
+		if (SDKManager)
+		{
+			TArray<IEOSPlatformHandlePtr> Platforms = SDKManager->GetActivePlatforms();
+			if (Platforms.Num() > 0 && Platforms[0].IsValid())
+			{
+				EOS_HPlatform PlatformHandle = *Platforms[0]; // используем operator EOS_HPlatform()
+				if (PlatformHandle)
+				{
+					EOS_HLobby LobbyHandle = EOS_Platform_GetLobbyInterface(PlatformHandle);
+					if (LobbyHandle)
+					{
+						EOS_Lobby_RemoveNotifyLeaveLobbyRequested(LobbyHandle, LeaveLobbyRequestedNotificationId);
+						LeaveLobbyRequestedNotificationId = EOS_INVALID_NOTIFICATIONID;
+					}
+				}
+			}
+		}
+	}
+
 	bHasCachedLobby = false;
 	bHasCachedNativeLobbyId = false;
 	CachedLobby = FIsotopeLobbyBP{};
@@ -271,6 +368,43 @@ void UIsotopePartySubsystem::InitializeOnlineServices()
 		return;
 	}
 	UILobbyJoinRequestedHandle = Lobbies->OnUILobbyJoinRequested().Add(this, &UIsotopePartySubsystem::HandleUILobbyJoinRequested);
+	LobbyLeftHandle = Lobbies->OnLobbyLeft().Add(this, &UIsotopePartySubsystem::HandleLobbyLeft);
+
+	// Регистрируем EOS SDK callback для кнопки Leave Party в overlay
+	IEOSSDKManager* SDKManager = IEOSSDKManager::Get();
+	if (SDKManager)
+	{
+		TArray<IEOSPlatformHandlePtr> Platforms = SDKManager->GetActivePlatforms();
+		if (Platforms.Num() > 0 && Platforms[0].IsValid())
+		{
+			EOS_HPlatform PlatformHandle = *Platforms[0]; // используем operator EOS_HPlatform()
+			if (PlatformHandle)
+			{
+				EOS_HLobby LobbyHandle = EOS_Platform_GetLobbyInterface(PlatformHandle);
+				if (LobbyHandle)
+				{
+					EOS_Lobby_AddNotifyLeaveLobbyRequestedOptions Options = {};
+					Options.ApiVersion = EOS_LOBBY_ADDNOTIFYLEAVELOBBYREQUESTED_API_LATEST;
+
+					LeaveLobbyRequestedNotificationId = EOS_Lobby_AddNotifyLeaveLobbyRequested(
+						LobbyHandle,
+						&Options,
+						this,
+						&UIsotopePartySubsystem::OnLeaveLobbyRequestedCallback
+					);
+
+					if (LeaveLobbyRequestedNotificationId != EOS_INVALID_NOTIFICATIONID)
+					{
+						UE_LOG(LogIsotopePartySubsystem, Log, TEXT("Successfully registered EOS LeaveLobbyRequested callback"));
+					}
+					else
+					{
+						UE_LOG(LogIsotopePartySubsystem, Warning, TEXT("Failed to register EOS LeaveLobbyRequested callback"));
+					}
+				}
+			}
+		}
+	}
 }
 
 void UIsotopePartySubsystem::StartPolling()
@@ -883,27 +1017,20 @@ bool UIsotopePartySubsystem::GetLobbyMembers(TArray<FIsotopeLobbyMemberBP>& OutM
 
 void UIsotopePartySubsystem::ShowFriendsOverlay()
 {
+	if (!EnsureLoggedInAndReady(true))
+	{
+		OnOnlineError.Broadcast(TEXT("Not logged in"));
+		return;
+	}
+
 	if (!ExternalUI.IsValid())
 	{
 		OnOnlineError.Broadcast(TEXT("ExternalUI interface not available"));
 		return;
 	}
 
-	UGameInstance* GI = GetGameInstance();
-	if (!GI)
-	{
-		OnOnlineError.Broadcast(TEXT("GameInstance unavailable"));
-		return;
-	}
-
-	ULocalPlayer* LocalPlayer = GI->GetFirstGamePlayer();
-	if (!LocalPlayer)
-	{
-		OnOnlineError.Broadcast(TEXT("No local player found"));
-		return;
-	}
-
 	FExternalUIShowFriendsUI::Params Params;
+	Params.LocalAccountId = LocalAccountId;
 	ExternalUI->ShowFriendsUI(MoveTemp(Params));
 
 	OnInviteUIOpened.Broadcast(TEXT("Friends UI opened"));

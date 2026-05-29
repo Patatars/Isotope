@@ -13,6 +13,8 @@
 #include "Online/Presence.h"
 #include "Online/OnlineServicesCommon.h"
 
+#include "eos_lobby_types.h"
+
 #include "IsotopePartySubsystem.generated.h"
 
 DECLARE_LOG_CATEGORY_EXTERN(LogIsotopePartySubsystem, Log, All);
@@ -270,7 +272,15 @@ private:
 	static bool LobbyEquals(const FIsotopeLobbyBP& A, const FIsotopeLobbyBP& B);
 
 	UE::Online::FOnlineEventDelegateHandle UILobbyJoinRequestedHandle;
+	UE::Online::FOnlineEventDelegateHandle LobbyLeftHandle;
+
 	void HandleUILobbyJoinRequested(const UE::Online::FUILobbyJoinRequested& EventParams);
+	void HandleLobbyLeft(const UE::Online::FLobbyLeft& EventParams);
+
+	// EOS SDK direct integration for Leave Party button
+	EOS_NotificationId LeaveLobbyRequestedNotificationId = EOS_INVALID_NOTIFICATIONID;
+	static void EOS_CALL OnLeaveLobbyRequestedCallback(const EOS_Lobby_LeaveLobbyRequestedCallbackInfo* Data);
+	void HandleEOSLeaveLobbyRequested(const char* LobbyId);
 
 	void BroadcastLobbyDelta(const FIsotopeLobbyBP& OldLobby, const FIsotopeLobbyBP& NewLobby);
 
