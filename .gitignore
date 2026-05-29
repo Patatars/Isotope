@@ -25,3 +25,4 @@ BuildScripts
 run.txt
 Android
 .idea
+*.bat
