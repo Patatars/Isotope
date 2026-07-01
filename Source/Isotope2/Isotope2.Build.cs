@@ -15,20 +15,19 @@ public class Isotope2 : ModuleRules
             "HTTP",
             "Json",
             "JsonUtilities",
+            "WebSockets",
             "CoreOnline",
-            "OnlineSubsystem",
-            "OnlineSubsystemUtils",
-            "OnlineSubsystemEOS",
             "EOSShared",
-        });
-
-        PrivateDependencyModuleNames.AddRange(new string[]
-        {
             "OnlineServicesEOSGS",
             "EOSSDK",
             "OnlineServicesInterface",
             "OnlineServicesCommon",
             "OnlineServicesEOS",
+        });
+
+        PrivateDependencyModuleNames.AddRange(new string[]
+        {
+
         });
     }
 }

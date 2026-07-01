@@ -2,8 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Subsystems/GameInstanceSubsystem.h"
-#include "TimerManager.h"
-
+#include "Online/Sessions.h"
 #include "Online/OnlineServices.h"
 #include "Online/Auth.h"
 #include "Online/Lobbies.h"
@@ -15,9 +14,9 @@
 
 #include "eos_lobby_types.h"
 
-#include "IsotopePartySubsystem.generated.h"
+#include "LobbySubsystem.generated.h"
 
-DECLARE_LOG_CATEGORY_EXTERN(LogIsotopePartySubsystem, Log, All);
+DECLARE_LOG_CATEGORY_EXTERN(LogLobbySubsystem, Log, All);
 
 UENUM(BlueprintType)
 enum class EIsotopeAttributeType : uint8
@@ -69,6 +68,9 @@ struct FIsotopeLobbyMemberBP
 	FString AccountId;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Isotope|Lobby")
+	FString DisplayName;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Isotope|Lobby")
 	bool bIsLocalMember = false;
 
 	UPROPERTY(BlueprintReadOnly, Category = "Isotope|Lobby")
@@ -105,33 +107,31 @@ struct FIsotopeLobbyBP
 	TArray<FIsotopeLobbyMemberBP> Members;
 };
 
-
-
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIsotopeLoginSuccess, const FString&, AccountId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIsotopeLoginFailed, const FString&, ErrorText);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIsotopeSimpleResult, const FString&, Message);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIsotopeLobbyChanged, const FIsotopeLobbyBP&, Lobby);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnIsotopeLobbyMemberChanged, const FIsotopeLobbyBP&, Lobby, const FIsotopeLobbyMemberBP&, Member);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnIsotopeDisplayName, const FString&, AccountId, const FString&, DisplayName);
+DECLARE_DYNAMIC_DELEGATE_OneParam(FOnLobbyAttributeUpdatedDelegate, const FIsotopeAttribute&, Attribute);
+DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnLobbyMemberAttributeUpdatedDelegate, const FIsotopeLobbyMemberBP&, Member, const FIsotopeAttribute&, Attribute);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIsotopeLobbyInviteAccepted, const FString&, LobbyIdStr);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDisplayNameReady, FString, AccountId, FString, DisplayName);
+DECLARE_DYNAMIC_DELEGATE_FourParams(FOnExternalAuthCredentialReady, bool, bSuccess, const FString&, CredentialType, const FString&, Credential, const FString&, Error);
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSessionJoinStarted, const FString&, SessionId);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSessionJoinFailed, const FString&, SessionId, const FString&, Error);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSessionJoinSucceeded, const FString&, SessionId, const FString&, ConnectString);
 
 UCLASS()
-class ISOTOPE2_API UIsotopePartySubsystem : public UGameInstanceSubsystem
+class ISOTOPE2_API ULobbySubsystem : public UGameInstanceSubsystem
 {
 	GENERATED_BODY()
 
 public:
+	// --- БЛУПРИНТОВЫЕ СОБЫТИЯ (ДЕЛЕГАТЫ) ---
 	UPROPERTY(BlueprintAssignable, Category = "Isotope|Online")
 	FOnIsotopeLoginSuccess OnLoginSuccess;
-
-	UPROPERTY(BlueprintAssignable, Category = "Isotope|UserInfo")
-	FOnIsotopeDisplayName OnDisplayNameReady;
-
-	UPROPERTY(BlueprintAssignable, Category = "Isotope|UserInfo")
-	FOnIsotopeSimpleResult OnDisplayNameFailed;
-
 	UPROPERTY(BlueprintAssignable, Category = "Isotope|Online")
 	FOnIsotopeLoginFailed OnLoginFailed;
 
@@ -147,6 +147,9 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "Isotope|Lobby")
 	FOnIsotopeLobbyChanged OnLobbyLeft;
 
+	UPROPERTY(BlueprintAssignable, Category = "Online|Lobby")
+	FOnDisplayNameReady OnDisplayNameReady;
+
 	UPROPERTY(BlueprintAssignable, Category = "Isotope|Lobby")
 	FOnIsotopeLobbyMemberChanged OnLobbyMemberJoined;
 
@@ -160,26 +163,27 @@ public:
 	FOnIsotopeLobbyMemberChanged OnLobbyMemberAttributesChanged;
 
 	UPROPERTY(BlueprintAssignable, Category = "Isotope|Lobby")
-	FOnIsotopeSimpleResult OnBecameLobbyOwner;
-
-	UPROPERTY(BlueprintAssignable, Category = "Isotope|Lobby")
-	FOnIsotopeSimpleResult OnInviteUIOpened;
-
-	UPROPERTY(BlueprintAssignable, Category = "Isotope|Lobby")
-	FOnIsotopeSimpleResult OnOnlineError;
+	FOnIsotopeLobbyMemberChanged OnLobbyLeaderChanged;
 
 	UPROPERTY(BlueprintAssignable, Category = "Isotope|Lobby")
 	FOnIsotopeLobbyInviteAccepted OnLobbyInviteAccepted;
 
-public:
-	UFUNCTION(BlueprintCallable, Category = "Isotope|Online")
-	void LoginDeveloper();
+	UPROPERTY(BlueprintAssignable, Category = "Isotope|Lobby")
+	FOnIsotopeSimpleResult OnOnlineError;
 
-	// Читает -AUTH_TYPE, -AUTH_LOGIN, -AUTH_PASSWORD из командной строки и логинится.
-	// Пример: -AUTH_TYPE=developer -AUTH_LOGIN=localhost:6547 -AUTH_PASSWORD=Daun2
-	// Если аргументы не найдены — фолбэк на LoginDeveloper (кэш → UI).
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Sessions")
+	FOnSessionJoinStarted OnSessionJoinStarted;
+
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Sessions")
+	FOnSessionJoinFailed OnSessionJoinFailed;
+
+	UPROPERTY(BlueprintAssignable, Category = "EOS|Sessions")
+	FOnSessionJoinSucceeded OnSessionJoinSucceeded;
+
+public:
+	// --- ИНТЕРФЕЙС ДЛЯ BLUEPRINTS ---
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Online")
-	void AutoLoginFromCommandLine();
+	void Login();
 
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Online")
 	void Logout();
@@ -193,6 +197,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Lobby")
 	void LeaveLobby();
 
+	// Установка атрибутов лобби
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Lobby")
 	void SetLobbyAttribute(const FString& Key, const FString& Value);
 
@@ -205,6 +210,7 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Lobby")
 	void SetLobbyAttributeBool(const FString& Key, bool Value);
 
+	// Установка атрибутов локального игрока внутри лобби
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Lobby")
 	void SetMemberAttribute(const FString& Key, const FString& Value);
 
@@ -217,33 +223,48 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Lobby")
 	void SetMemberAttributeBool(const FString& Key, bool Value);
 
+	UFUNCTION(BlueprintCallable, Category = "Isotope|Lobby|Attributes")
+	void OnLobbyAttributeUpdated(const FString& Name, FOnLobbyAttributeUpdatedDelegate OnUpdated);
+
+	UFUNCTION(BlueprintCallable, Category = "Isotope|Lobby|Attributes")
+	void RemoveLobbyAttributeUpdated(const FString& Name, FOnLobbyAttributeUpdatedDelegate OnUpdated);
+
+	UFUNCTION(BlueprintCallable, Category = "Isotope|Lobby|Attributes")
+	void OnLobbyMemberAttributeUpdated(const FString& Name, FOnLobbyMemberAttributeUpdatedDelegate OnUpdated);
+
+	UFUNCTION(BlueprintCallable, Category = "Isotope|Lobby|Attributes")
+	void RemoveLobbyMemberAttributeUpdated(const FString& Name, FOnLobbyMemberAttributeUpdatedDelegate OnUpdated);
+
+	// Геттеры состояния для UI
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Lobby")
 	bool GetCurrentLobby(FIsotopeLobbyBP& OutLobby) const;
-
-	UFUNCTION(BlueprintCallable, Category = "Isotope|UserInfo")
-	void QueryDisplayName(const FString& AccountIdStr);
-
-	UFUNCTION(BlueprintCallable, Category = "Isotope|UserInfo")
-	void QueryAllMemberDisplayNames();
 
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Lobby")
 	bool GetLobbyMembers(TArray<FIsotopeLobbyMemberBP>& OutMembers) const;
 
+	// Вызовы оверлеев Epic Online Services
 	UFUNCTION(BlueprintCallable, Category = "Isotope|UI")
 	void ShowFriendsOverlay();
 
 	UFUNCTION(BlueprintCallable, Category = "Isotope|UI")
 	void ShowLoginOverlay();
 
+	// Утилиты / Отладка
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Debug")
 	bool IsLoggedIn() const { return bLoggedIn; }
 
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Debug")
 	FString GetLocalAccountIdString() const { return LocalAccountIdString; }
 
-
 	UFUNCTION(BlueprintCallable, Category = "Isotope|Player", BlueprintPure)
-	FString GetPlayerPUID(APlayerState* PlayerState);
+	FString GetPlayerPUID(APlayerState* PlayerState) const;
+
+	UFUNCTION(BlueprintCallable, Category = "EOS|Auth")
+	void QueryExternalAuthCredential(FOnExternalAuthCredentialReady Completion);
+
+	UFUNCTION(BlueprintCallable, Category = "EOS|Sessions")
+	void ConnectToSessionById(const FString& SessionId, const FString& JoinTicket);
+
 
 
 protected:
@@ -251,38 +272,44 @@ protected:
 	virtual void Deinitialize() override;
 
 private:
+	
 	void InitializeOnlineServices();
-	void StartPolling();
-	void StopPolling();
-	void PollLobbyState();
-
 	bool ResolveLocalAccountFromAuthCache();
 	bool EnsureLoggedInAndReady(bool bAllowLoginUI);
-
-	// Нативный LobbyId хранится отдельно, чтобы не конвертировать туда-обратно через FString
+	FString GetNativeEOSProductUserId(const UE::Online::FAccountId& AccountId) const;
+	void QueryMemberDisplayName(const UE::Online::FAccountId& AccountId);
 	bool GetCurrentJoinedLobbyNative(TSharedPtr<const UE::Online::FLobby>& OutLobby) const;
-
 	FIsotopeLobbyBP BuildLobbySnapshot(const UE::Online::FLobby& NativeLobby) const;
 	FIsotopeLobbyMemberBP BuildMemberSnapshot(const UE::Online::FLobbyMember& NativeMember) const;
 	FIsotopeAttribute ConvertVariantToAttribute(const FString& Key, const UE::Online::FSchemaVariant& Variant) const;
+	void BroadcastLobbyAttributeUpdated(const UE::Online::FSchemaAttributeId& AttributeId, const UE::Online::FSchemaVariant& Value);
+	void BroadcastLobbyMemberAttributeUpdated(const FIsotopeLobbyMemberBP& Member, const UE::Online::FSchemaAttributeId& AttributeId, const UE::Online::FSchemaVariant& Value);
 
-	static bool AttributeEquals(const FIsotopeAttribute& A, const FIsotopeAttribute& B);
-	static bool AttributeMapEquals(const TMap<FString, FIsotopeAttribute>& A, const TMap<FString, FIsotopeAttribute>& B);
-	static bool MemberEquals(const FIsotopeLobbyMemberBP& A, const FIsotopeLobbyMemberBP& B);
-	static bool LobbyEquals(const FIsotopeLobbyBP& A, const FIsotopeLobbyBP& B);
-
+private:
+	// --- ХЭНДЛЫ НАТИВНЫХ СОБЫТИЙ ONLINE SERVICES (OSSv2) ---
 	UE::Online::FOnlineEventDelegateHandle UILobbyJoinRequestedHandle;
+	UE::Online::FOnlineEventDelegateHandle LobbyJoinedHandle;
 	UE::Online::FOnlineEventDelegateHandle LobbyLeftHandle;
+	UE::Online::FOnlineEventDelegateHandle LobbyUpdatedHandle;
+	UE::Online::FOnlineEventDelegateHandle LobbyMemberJoinedHandle;
+	UE::Online::FOnlineEventDelegateHandle LobbyMemberLeftHandle;
+	UE::Online::FOnlineEventDelegateHandle LobbyMemberUpdatedHandle;
+	UE::Online::FOnlineEventDelegateHandle LobbyLeaderChangedHandle;
 
+	// --- МЕТОДЫ ОБРАБОТКИ НА ТИВНЫХ СОБЫТИЙ ---
 	void HandleUILobbyJoinRequested(const UE::Online::FUILobbyJoinRequested& EventParams);
-	void HandleLobbyLeft(const UE::Online::FLobbyLeft& EventParams);
+	void HandleNativeLobbyJoined(const UE::Online::FLobbyJoined& EventParams);
+	void HandleNativeLobbyLeft(const UE::Online::FLobbyLeft& EventParams);
+	void HandleNativeLobbyAttributesChanged(const UE::Online::FLobbyAttributesChanged& EventParams);
+	void HandleNativeLobbyMemberJoined(const UE::Online::FLobbyMemberJoined& EventParams);
+	void HandleNativeLobbyMemberLeft(const UE::Online::FLobbyMemberLeft& EventParams);
+	void HandleNativeLobbyMemberAttributesChanged(const UE::Online::FLobbyMemberAttributesChanged& EventParams);
+	void HandleNativeLobbyLeaderChanged(const UE::Online::FLobbyLeaderChanged& EventParams);
 
-	// EOS SDK direct integration for Leave Party button
+	// Прямая интеграция с EOS SDK для обработки системного оверлея (кнопка Leave Party)
 	EOS_NotificationId LeaveLobbyRequestedNotificationId = EOS_INVALID_NOTIFICATIONID;
 	static void EOS_CALL OnLeaveLobbyRequestedCallback(const EOS_Lobby_LeaveLobbyRequestedCallbackInfo* Data);
-	void HandleEOSLeaveLobbyRequested(const char* LobbyId);
-
-	void BroadcastLobbyDelta(const FIsotopeLobbyBP& OldLobby, const FIsotopeLobbyBP& NewLobby);
+	void HandleEOSLeaveLobbyRequested(const char* NativeLobbyIdStr);
 
 private:
 	bool bServicesReady = false;
@@ -293,7 +320,6 @@ private:
 	FPlatformUserId LocalPlatformUserId = PLATFORMUSERID_NONE;
 	UE::Online::FAccountId LocalAccountId;
 
-	// Нативный LobbyId для использования в API-вызовах (не конвертируется через FString)
 	UE::Online::FLobbyId CachedNativeLobbyId;
 	bool bHasCachedNativeLobbyId = false;
 
@@ -304,9 +330,13 @@ private:
 	UE::Online::IUserInfoPtr UserInfo;
 	UE::Online::ISocialPtr Social;
 	UE::Online::IPresencePtr Presence;
+	UE::Online::ISessionsPtr Sessions;
+
 
 	FIsotopeLobbyBP CachedLobby;
 	bool bHasCachedLobby = false;
 
-	FTimerHandle PollTimerHandle;
+	TMap<FString, TArray<FOnLobbyAttributeUpdatedDelegate>> LobbyAttributeUpdatedDelegates;
+	TMap<FString, TArray<FOnLobbyMemberAttributeUpdatedDelegate>> LobbyMemberAttributeUpdatedDelegates;
+
 };
