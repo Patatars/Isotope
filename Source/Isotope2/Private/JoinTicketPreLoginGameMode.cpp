@@ -64,7 +64,7 @@ void AJoinTicketPreLoginGameMode::PreLoginAsync(
 	const int32 RequestId = NextPreLoginRequestId++;
 	PendingPreLogins.Add(RequestId, { Options, Address, UniqueId, OnComplete });
 	UE_LOG(LogJoinTicketPreLogin, Log, TEXT("Validation dispatched to Blueprint. RequestId=%d PUID=%s Address=%s"), RequestId, *ConnectionPUID, *Address);
-	ValidateJoinTicket(RequestId, JoinTicket, ConnectionPUID);
+	ValidateJoinTicket(RequestId, ConnectionPUID, JoinTicket);
 }
 
 void AJoinTicketPreLoginGameMode::CompleteJoinTicketPreLogin(
