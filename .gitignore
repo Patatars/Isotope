@@ -4,6 +4,7 @@ DerivedDataCache
 TestBuilds
 Intermediate
 Saved
+Restricted/NotForLicensees/
 Windows
 *.pub
 *.zip

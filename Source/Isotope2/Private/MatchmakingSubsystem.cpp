@@ -133,6 +133,15 @@ void UMatchmakingSubsystem::ConnectLobbySocket(
 		bSocketConnectionPending ? TEXT("true") : TEXT("false"),
 		bSocketConnected ? TEXT("true") : TEXT("false"),
 		GameAuthToken.IsEmpty() ? TEXT("false") : TEXT("true"));
+	if (bSocketConnected && ConnectedLobbyId == LobbyId && LobbySocket.IsValid() && LobbySocket->IsConnected())
+	{
+		UE_LOG(LogMatchmakingSubsystem, Log, TEXT("WebSocket is already connected to this lobby; reusing connection. LobbyId=%s"), *LobbyId);
+		MatchmakingSocketEventHandler = MoveTemp(EventHandler);
+		SocketDisconnectedHandler = MoveTemp(DisconnectedHandler);
+		ConnectionCompletion.ExecuteIfBound(true, TEXT(""));
+		return;
+	}
+
 	if (bSocketConnectionPending || bSocketConnected)
 	{
 		UE_LOG(LogMatchmakingSubsystem, Warning, TEXT("WebSocket connect rejected: another connection is active"));
