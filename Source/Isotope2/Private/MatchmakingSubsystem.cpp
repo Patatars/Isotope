@@ -82,14 +82,15 @@ void UMatchmakingSubsystem::AuthenticateEOS(
 					AuthenticatedPUID.Empty();
 					const FString Error = GetResponseError(Response);
 					UE_LOG(LogMatchmakingSubsystem, Error, TEXT("EOS backend authentication failed: %s"), *Error);
-					Completion.ExecuteIfBound(false, AuthData, Error);
+					ReportError(TEXT("AuthenticateEOS"), Error);
+					Completion.ExecuteIfBound(false, AuthData);
 					return;
 				}
 
 				AuthData.PUID = AuthenticatedPUID;
 				JsonObject->TryGetStringField(TEXT("expires_at"), AuthData.ExpiresAt);
 				UE_LOG(LogMatchmakingSubsystem, Log, TEXT("EOS backend authentication succeeded. PUID=%s ExpiresAt=%s"), *AuthenticatedPUID, *AuthData.ExpiresAt);
-				Completion.ExecuteIfBound(true, AuthData, TEXT(""));
+				Completion.ExecuteIfBound(true, AuthData);
 			}));
 }
 
@@ -104,7 +105,7 @@ void UMatchmakingSubsystem::RequestLobbyMemberProof(
 
 	SendJsonRequest(TEXT("POST"), TEXT("/lobbies/member-proof"), SerializeJson(Json), ERequestAuth::Player,
 		FOnBackendRequestComplete::CreateWeakLambda(this,
-			[Completion](const bool bSuccess, const FString& Response) mutable
+			[this, Completion](const bool bSuccess, const FString& Response) mutable
 			{
 				FString PUID;
 				FString Proof;
@@ -113,11 +114,13 @@ void UMatchmakingSubsystem::RequestLobbyMemberProof(
 					!JsonObject->TryGetStringField(TEXT("puid"), PUID) ||
 					!JsonObject->TryGetStringField(TEXT("proof"), Proof))
 				{
-					Completion.ExecuteIfBound(false, TEXT(""), TEXT(""), GetResponseError(Response));
+					const FString Error = GetResponseError(Response);
+					ReportError(TEXT("RequestLobbyMemberProof"), Error);
+					Completion.ExecuteIfBound(false, TEXT(""), TEXT(""));
 					return;
 				}
 
-				Completion.ExecuteIfBound(true, PUID, Proof, TEXT(""));
+				Completion.ExecuteIfBound(true, PUID, Proof);
 			}));
 }
 
@@ -138,28 +141,34 @@ void UMatchmakingSubsystem::ConnectLobbySocket(
 		UE_LOG(LogMatchmakingSubsystem, Log, TEXT("WebSocket is already connected to this lobby; reusing connection. LobbyId=%s"), *LobbyId);
 		MatchmakingSocketEventHandler = MoveTemp(EventHandler);
 		SocketDisconnectedHandler = MoveTemp(DisconnectedHandler);
-		ConnectionCompletion.ExecuteIfBound(true, TEXT(""));
+		ConnectionCompletion.ExecuteIfBound(true);
 		return;
 	}
 
 	if (bSocketConnectionPending || bSocketConnected)
 	{
 		UE_LOG(LogMatchmakingSubsystem, Warning, TEXT("WebSocket connect rejected: another connection is active"));
-		ConnectionCompletion.ExecuteIfBound(false, TEXT("Lobby socket connection is already active"));
+		const FString Error = TEXT("Lobby socket connection is already active");
+		ReportError(TEXT("ConnectLobbySocket"), Error);
+		ConnectionCompletion.ExecuteIfBound(false);
 		return;
 	}
 
 	if (LobbyId.IsEmpty())
 	{
 		UE_LOG(LogMatchmakingSubsystem, Error, TEXT("WebSocket connect rejected: LobbyId is empty"));
-		ConnectionCompletion.ExecuteIfBound(false, TEXT("LobbyId is missing"));
+		const FString Error = TEXT("LobbyId is missing");
+		ReportError(TEXT("ConnectLobbySocket"), Error);
+		ConnectionCompletion.ExecuteIfBound(false);
 		return;
 	}
 
 	if (GameAuthToken.IsEmpty())
 	{
 		UE_LOG(LogMatchmakingSubsystem, Error, TEXT("WebSocket connect rejected: backend authentication is missing"));
-		ConnectionCompletion.ExecuteIfBound(false, TEXT("AuthenticateEOS must succeed before ConnectLobbySocket"));
+		const FString Error = TEXT("AuthenticateEOS must succeed before ConnectLobbySocket");
+		ReportError(TEXT("ConnectLobbySocket"), Error);
+		ConnectionCompletion.ExecuteIfBound(false);
 		return;
 	}
 
@@ -181,7 +190,9 @@ void UMatchmakingSubsystem::ConnectLobbySocket(
 		UE_LOG(LogMatchmakingSubsystem, Error, TEXT("CreateWebSocket returned an invalid socket. LobbyId=%s"), *LobbyId);
 		FOnLobbySocketConnectionComplete Completion = MoveTemp(PendingSocketConnection);
 		ReleaseLobbySocket(false);
-		Completion.ExecuteIfBound(false, TEXT("Failed to create lobby WebSocket"));
+		const FString Error = TEXT("Failed to create lobby WebSocket");
+		ReportError(TEXT("ConnectLobbySocket"), Error);
+		Completion.ExecuteIfBound(false);
 		return;
 	}
 
@@ -202,7 +213,7 @@ void UMatchmakingSubsystem::DisconnectLobbySocket()
 	{
 		FOnLobbySocketConnectionComplete ConnectionCompletion = MoveTemp(PendingSocketConnection);
 		ReleaseLobbySocket(true);
-		ConnectionCompletion.ExecuteIfBound(false, TEXT("Lobby socket connection was cancelled"));
+		ConnectionCompletion.ExecuteIfBound(false);
 	}
 	else if (bSocketConnected)
 	{
@@ -245,9 +256,13 @@ void UMatchmakingSubsystem::StartMatchmaking(
 
 	SendJsonRequest(TEXT("POST"), TEXT("/matchmaking/queue"), SerializeJson(Json), ERequestAuth::Player,
 		FOnBackendRequestComplete::CreateWeakLambda(this,
-			[Completion](const bool bSuccess, const FString& Response) mutable
+			[this, Completion](const bool bSuccess, const FString& Response) mutable
 			{
-				Completion.ExecuteIfBound(bSuccess, Response);
+				if (!bSuccess)
+				{
+					ReportError(TEXT("StartMatchmaking"), GetResponseError(Response));
+				}
+				Completion.ExecuteIfBound(bSuccess);
 			}));
 }
 
@@ -261,9 +276,13 @@ void UMatchmakingSubsystem::CancelMatchmaking(
 
 	SendJsonRequest(TEXT("POST"), TEXT("/matchmaking/cancel"), SerializeJson(Json), ERequestAuth::Player,
 		FOnBackendRequestComplete::CreateWeakLambda(this,
-			[Completion](const bool bSuccess, const FString& Response) mutable
+			[this, Completion](const bool bSuccess, const FString& Response) mutable
 			{
-				Completion.ExecuteIfBound(bSuccess, Response);
+				if (!bSuccess)
+				{
+					ReportError(TEXT("CancelMatchmaking"), GetResponseError(Response));
+				}
+				Completion.ExecuteIfBound(bSuccess);
 			}));
 }
 
@@ -274,19 +293,21 @@ void UMatchmakingSubsystem::RequestJoinTicket(
 	UE_LOG(LogMatchmakingSubsystem, Log, TEXT("Join ticket requested. SessionId=%s"), *SessionId);
 	SendJsonRequest(TEXT("POST"), FString::Printf(TEXT("/sessions/%s/join-ticket"), *SessionId), TEXT(""), ERequestAuth::Player,
 		FOnBackendRequestComplete::CreateWeakLambda(this,
-			[Completion](const bool bSuccess, const FString& Response) mutable
+			[this, Completion](const bool bSuccess, const FString& Response) mutable
 			{
 				FString JoinTicket;
 				const TSharedPtr<FJsonObject> JsonObject = DeserializeJson(Response);
 				if (!bSuccess || !JsonObject.IsValid() ||
 					!JsonObject->TryGetStringField(TEXT("join_ticket"), JoinTicket))
 				{
-					Completion.ExecuteIfBound(false, TEXT(""), GetResponseError(Response));
+					const FString Error = GetResponseError(Response);
+					ReportError(TEXT("RequestJoinTicket"), Error);
+					Completion.ExecuteIfBound(false, TEXT(""));
 					return;
 				}
 
 				UE_LOG(LogMatchmakingSubsystem, Log, TEXT("Join ticket created"));
-				Completion.ExecuteIfBound(true, JoinTicket, TEXT(""));
+				Completion.ExecuteIfBound(true, JoinTicket);
 			}));
 }
 
@@ -431,9 +452,10 @@ void UMatchmakingSubsystem::HandleSocketConnected()
 void UMatchmakingSubsystem::HandleSocketConnectionError(const FString& Error)
 {
 	UE_LOG(LogMatchmakingSubsystem, Error, TEXT("WebSocket connection failed. LobbyId=%s Error=%s"), *ConnectedLobbyId, *Error);
+	ReportError(TEXT("ConnectLobbySocket"), Error);
 	FOnLobbySocketConnectionComplete ConnectionCompletion = MoveTemp(PendingSocketConnection);
 	ReleaseLobbySocket(false);
-	ConnectionCompletion.ExecuteIfBound(false, Error);
+	ConnectionCompletion.ExecuteIfBound(false);
 }
 
 void UMatchmakingSubsystem::HandleSocketClosed(
@@ -444,12 +466,17 @@ void UMatchmakingSubsystem::HandleSocketClosed(
 	UE_LOG(LogMatchmakingSubsystem, Warning, TEXT("WebSocket closed. LobbyId=%s Status=%d Clean=%s Reason=%s"), *ConnectedLobbyId, StatusCode, bWasClean ? TEXT("true") : TEXT("false"), *Reason);
 	if (bSocketConnectionPending)
 	{
+		const FString Error = Reason.IsEmpty() ? TEXT("Lobby socket closed during connection") : Reason;
+		ReportError(TEXT("ConnectLobbySocket"), Error);
 		FOnLobbySocketConnectionComplete ConnectionCompletion = MoveTemp(PendingSocketConnection);
 		ReleaseLobbySocket(false);
-		ConnectionCompletion.ExecuteIfBound(false, Reason);
+		ConnectionCompletion.ExecuteIfBound(false);
 	}
 	else if (bSocketConnected)
 	{
+		ReportError(
+			TEXT("ConnectLobbySocket"),
+			Reason.IsEmpty() ? TEXT("Lobby socket disconnected") : Reason);
 		FOnLobbySocketDisconnected DisconnectedHandler = SocketDisconnectedHandler;
 		ReleaseLobbySocket(false);
 		DisconnectedHandler.ExecuteIfBound(StatusCode, Reason);
@@ -472,7 +499,7 @@ void UMatchmakingSubsystem::CompleteLobbySocketConnection(
 	bSocketConnectionPending = false;
 	FOnLobbySocketConnectionComplete Completion = MoveTemp(PendingSocketConnection);
 	PendingSocketConnection.Unbind();
-	Completion.ExecuteIfBound(bSuccess, Error);
+	Completion.ExecuteIfBound(bSuccess);
 }
 
 void UMatchmakingSubsystem::EmitMatchmakingSocketEvent(const FMatchmakingSocketEvent& Event)
@@ -509,6 +536,7 @@ void UMatchmakingSubsystem::HandleSocketMessage(const FString& Message)
 	if (!JsonObject.IsValid())
 	{
 		UE_LOG(LogMatchmakingSubsystem, Error, TEXT("WebSocket received invalid JSON"));
+		ReportError(TEXT("HandleSocketMessage"), TEXT("WebSocket received invalid JSON"));
 		return;
 	}
 
@@ -520,6 +548,7 @@ void UMatchmakingSubsystem::HandleSocketMessage(const FString& Message)
 
 	FMatchmakingSocketEvent Event;
 	Event.LobbyId = ConnectedLobbyId;
+	FString EventError;
 
 	if (EventName == TEXT("queued"))
 	{
@@ -541,7 +570,10 @@ void UMatchmakingSubsystem::HandleSocketMessage(const FString& Message)
 	else if (EventName == TEXT("failed"))
 	{
 		Event.Type = EMatchmakingSocketEventType::MatchmakingFailed;
-		JsonObject->TryGetStringField(TEXT("reason"), Event.Error);
+		JsonObject->TryGetStringField(TEXT("reason"), EventError);
+		ReportError(
+			TEXT("StartMatchmaking"),
+			EventError.IsEmpty() ? TEXT("Matchmaking failed") : EventError);
 	}
 	else if (EventName == TEXT("session_closed"))
 	{
@@ -550,11 +582,31 @@ void UMatchmakingSubsystem::HandleSocketMessage(const FString& Message)
 	else
 	{
 		UE_LOG(LogMatchmakingSubsystem, Warning, TEXT("WebSocket received unknown event: %s"), *EventName);
+		ReportError(
+			TEXT("HandleSocketMessage"),
+			FString::Printf(TEXT("WebSocket received unknown event: %s"), *EventName));
 		return;
 	}
 
-	UE_LOG(LogMatchmakingSubsystem, Log, TEXT("WebSocket event received. LobbyId=%s Event=%s SessionId=%s Error=%s"), *Event.LobbyId, *EventName, *Event.SessionId, *Event.Error);
+	UE_LOG(LogMatchmakingSubsystem, Log, TEXT("WebSocket event received. LobbyId=%s Event=%s SessionId=%s Error=%s"), *Event.LobbyId, *EventName, *Event.SessionId, *EventError);
 	EmitMatchmakingSocketEvent(Event);
+}
+
+void UMatchmakingSubsystem::ReportError(
+	const FString& Method,
+	const FString& ErrorMessage)
+{
+	FIsotopeError Error;
+	Error.Method = Method;
+	Error.Error = ErrorMessage.IsEmpty() ? TEXT("Unknown matchmaking error") : ErrorMessage;
+	UE_LOG(
+		LogMatchmakingSubsystem,
+		Error,
+		TEXT("Matchmaking error emitted. Bound=%s Method=%s Error=%s"),
+		OnError.IsBound() ? TEXT("true") : TEXT("false"),
+		*Error.Method,
+		*Error.Error);
+	OnError.Broadcast(Error);
 }
 
 FString UMatchmakingSubsystem::GetServerApiToken() const

@@ -122,7 +122,7 @@ void ULobbySubsystem::InitializeOnlineServices()
 	if (!Services.IsValid())
 	{
 		UE_LOG(LogLobbySubsystem, Error, TEXT("Online Services are not available"));
-		OnOnlineError.Broadcast(TEXT("OnlineServices not available"));
+		ReportError(TEXT("InitializeOnlineServices"), TEXT("OnlineServices not available"));
 		return;
 	}
 
@@ -138,7 +138,7 @@ void ULobbySubsystem::InitializeOnlineServices()
 	if (!bServicesReady)
 	{
 		UE_LOG(LogLobbySubsystem, Error, TEXT("Required Online Services interfaces are missing"));
-		OnOnlineError.Broadcast(TEXT("Required Online Services interfaces are missing"));
+		ReportError(TEXT("InitializeOnlineServices"), TEXT("Required Online Services interfaces are missing"));
 		return;
 	}
 
@@ -188,7 +188,8 @@ void ULobbySubsystem::Login()
 	UE_LOG(LogLobbySubsystem, Log, TEXT("Login requested"));
 	if (!Auth.IsValid())
 	{
-		OnLoginFailed.Broadcast(TEXT("Auth interface not initialized"));
+		ReportError(TEXT("Login"), TEXT("Auth interface not initialized"));
+		OnLoginFailed.Broadcast();
 		return;
 	}
 
@@ -207,10 +208,20 @@ void ULobbySubsystem::Login()
 	if (bHasType && bHasLogin && bHasPassword)
 	{
 		UGameInstance* GI = GetGameInstance();
-		if (!GI) return;
+		if (!GI)
+		{
+			ReportError(TEXT("Login"), TEXT("GameInstance is unavailable"));
+			OnLoginFailed.Broadcast();
+			return;
+		}
 
 		ULocalPlayer* LocalPlayer = GI->GetFirstGamePlayer();
-		if (!LocalPlayer) return;
+		if (!LocalPlayer)
+		{
+			ReportError(TEXT("Login"), TEXT("Local player is unavailable"));
+			OnLoginFailed.Broadcast();
+			return;
+		}
 
 		LocalPlatformUserId = LocalPlayer->GetPlatformUserId();
 
@@ -236,7 +247,8 @@ void ULobbySubsystem::Login()
 					{
 						FString ErrorStr = Result.GetErrorValue().GetLogString();
 						UE_LOG(LogLobbySubsystem, Error, TEXT("Login failed: %s"), *ErrorStr);
-						OnLoginFailed.Broadcast(ErrorStr);
+						ReportError(TEXT("Login"), ErrorStr);
+						OnLoginFailed.Broadcast();
 					}
 				});
 	}
@@ -309,7 +321,10 @@ void ULobbySubsystem::CreateLobby(int32 MaxMembers, EIsotopeLobbyJoinPolicy Lobb
 	UE_LOG(LogLobbySubsystem, Log, TEXT("Create lobby requested. MaxMembers=%d JoinPolicy=%d"), MaxMembers, static_cast<int32>(LobbyJoinPolicy));
 	if (!EnsureLoggedInAndReady(true))
 	{
-		OnOnlineError.Broadcast(TEXT("Not logged in"));
+		if (bServicesReady)
+		{
+			ReportError(TEXT("CreateLobby"), TEXT("Not logged in"));
+		}
 		return;
 	}
 
@@ -333,7 +348,7 @@ void ULobbySubsystem::CreateLobby(int32 MaxMembers, EIsotopeLobbyJoinPolicy Lobb
 				{
 					const FString ErrStr = Result.GetErrorValue().GetLogString();
 					UE_LOG(LogLobbySubsystem, Error, TEXT("Create lobby failed: %s"), *ErrStr);
-					OnOnlineError.Broadcast(FString::Printf(TEXT("CreateLobby failed: %s"), *ErrStr));
+					ReportError(TEXT("CreateLobby"), ErrStr);
 					return;
 				}
 
@@ -351,28 +366,44 @@ void ULobbySubsystem::JoinLobby(const FString& LobbyIdStr)
 {
 	if (!EnsureLoggedInAndReady(true))
 	{
-		OnOnlineError.Broadcast(TEXT("Not logged in"));
+		if (bServicesReady)
+		{
+			ReportError(TEXT("JoinLobby"), TEXT("Not logged in"));
+		}
 		return;
 	}
-	OnOnlineError.Broadcast(TEXT("Manual join by LobbyId not supported via string. Use invite system."));
+	ReportError(TEXT("JoinLobby"), TEXT("Manual join by LobbyId not supported via string. Use invite system."));
 }
 
 void ULobbySubsystem::LeaveLobby()
 {
 	UE_LOG(LogLobbySubsystem, Log, TEXT("Leave lobby requested. LobbyId=%s"), *CachedLobby.LobbyId);
-	if (!EnsureLoggedInAndReady(false) || !CachedNativeLobbyId.IsValid())
+	if (!EnsureLoggedInAndReady(false))
 	{
-		OnOnlineError.Broadcast(TEXT("No active lobby or not logged in"));
+		if (bServicesReady)
+		{
+			ReportError(TEXT("LeaveLobby"), TEXT("Not logged in"));
+		}
 		return;
 	}
-
-	const FIsotopeLobbyBP Previous = CachedLobby;
+	if (!CachedNativeLobbyId.IsValid())
+	{
+		ReportError(TEXT("LeaveLobby"), TEXT("No active lobby"));
+		return;
+	}
 
 	FLeaveLobby::Params Params;
 	Params.LocalAccountId = LocalAccountId;
 	Params.LobbyId = CachedNativeLobbyId;
 
-	Lobbies->LeaveLobby(MoveTemp(Params));
+	Lobbies->LeaveLobby(MoveTemp(Params))
+		.OnComplete(this, [this](const TOnlineResult<FLeaveLobby>& Result)
+			{
+				if (!Result.IsOk())
+				{
+					ReportError(TEXT("LeaveLobby"), Result.GetErrorValue().GetLogString());
+				}
+			});
 }
 
 // =============================================================================
@@ -382,84 +413,108 @@ void ULobbySubsystem::LeaveLobby()
 void ULobbySubsystem::SetLobbyAttribute(const FString& Key, const FString& Value)
 {
 	UE_LOG(LogLobbySubsystem, Log, TEXT("Set lobby string attribute requested. Key=%s"), *Key);
-	if (!EnsureLoggedInAndReady(false) || !CachedNativeLobbyId.IsValid()) return;
-	FModifyLobbyAttributes::Params Params;
-	Params.LocalAccountId = LocalAccountId;
-	Params.LobbyId = CachedNativeLobbyId;
-	Params.UpdatedAttributes.Add(FSchemaAttributeId(*Key), FSchemaVariant(Value));
-	Lobbies->ModifyLobbyAttributes(MoveTemp(Params));
+	ModifyLobbyAttribute(Key, FSchemaVariant(Value));
 }
 
 void ULobbySubsystem::SetLobbyAttributeInt(const FString& Key, int64 Value)
 {
 	UE_LOG(LogLobbySubsystem, Log, TEXT("Set lobby int attribute requested. Key=%s Value=%lld"), *Key, Value);
-	if (!EnsureLoggedInAndReady(false) || !CachedNativeLobbyId.IsValid()) return;
-	FModifyLobbyAttributes::Params Params;
-	Params.LocalAccountId = LocalAccountId;
-	Params.LobbyId = CachedNativeLobbyId;
-	Params.UpdatedAttributes.Add(FSchemaAttributeId(*Key), FSchemaVariant(Value));
-	Lobbies->ModifyLobbyAttributes(MoveTemp(Params));
+	ModifyLobbyAttribute(Key, FSchemaVariant(Value));
 }
 
 void ULobbySubsystem::SetLobbyAttributeDouble(const FString& Key, double Value)
 {
-	if (!EnsureLoggedInAndReady(false) || !CachedNativeLobbyId.IsValid()) return;
-	FModifyLobbyAttributes::Params Params;
-	Params.LocalAccountId = LocalAccountId;
-	Params.LobbyId = CachedNativeLobbyId;
-	Params.UpdatedAttributes.Add(FSchemaAttributeId(*Key), FSchemaVariant(Value));
-	Lobbies->ModifyLobbyAttributes(MoveTemp(Params));
+	ModifyLobbyAttribute(Key, FSchemaVariant(Value));
 }
 
 void ULobbySubsystem::SetLobbyAttributeBool(const FString& Key, bool Value)
 {
-	if (!EnsureLoggedInAndReady(false) || !CachedNativeLobbyId.IsValid()) return;
-	FModifyLobbyAttributes::Params Params;
-	Params.LocalAccountId = LocalAccountId;
-	Params.LobbyId = CachedNativeLobbyId;
-	Params.UpdatedAttributes.Add(FSchemaAttributeId(*Key), FSchemaVariant(Value));
-	Lobbies->ModifyLobbyAttributes(MoveTemp(Params));
+	ModifyLobbyAttribute(Key, FSchemaVariant(Value));
 }
 
 void ULobbySubsystem::SetMemberAttribute(const FString& Key, const FString& Value)
 {
 	UE_LOG(LogLobbySubsystem, Log, TEXT("Set member string attribute requested. Key=%s"), *Key);
-	if (!EnsureLoggedInAndReady(false) || !CachedNativeLobbyId.IsValid()) return;
-	FModifyLobbyMemberAttributes::Params Params;
-	Params.LocalAccountId = LocalAccountId;
-	Params.LobbyId = CachedNativeLobbyId;
-	Params.UpdatedAttributes.Add(FSchemaAttributeId(*Key), FSchemaVariant(Value));
-	Lobbies->ModifyLobbyMemberAttributes(MoveTemp(Params));
+	ModifyLobbyMemberAttribute(Key, FSchemaVariant(Value));
 }
 
 void ULobbySubsystem::SetMemberAttributeInt(const FString& Key, int64 Value)
 {
-	if (!EnsureLoggedInAndReady(false) || !CachedNativeLobbyId.IsValid()) return;
-	FModifyLobbyMemberAttributes::Params Params;
-	Params.LocalAccountId = LocalAccountId;
-	Params.LobbyId = CachedNativeLobbyId;
-	Params.UpdatedAttributes.Add(FSchemaAttributeId(*Key), FSchemaVariant(Value));
-	Lobbies->ModifyLobbyMemberAttributes(MoveTemp(Params));
+	ModifyLobbyMemberAttribute(Key, FSchemaVariant(Value));
 }
 
 void ULobbySubsystem::SetMemberAttributeDouble(const FString& Key, double Value)
 {
-	if (!EnsureLoggedInAndReady(false) || !CachedNativeLobbyId.IsValid()) return;
-	FModifyLobbyMemberAttributes::Params Params;
-	Params.LocalAccountId = LocalAccountId;
-	Params.LobbyId = CachedNativeLobbyId;
-	Params.UpdatedAttributes.Add(FSchemaAttributeId(*Key), FSchemaVariant(Value));
-	Lobbies->ModifyLobbyMemberAttributes(MoveTemp(Params));
+	ModifyLobbyMemberAttribute(Key, FSchemaVariant(Value));
 }
 
 void ULobbySubsystem::SetMemberAttributeBool(const FString& Key, bool Value)
 {
-	if (!EnsureLoggedInAndReady(false) || !CachedNativeLobbyId.IsValid()) return;
+	ModifyLobbyMemberAttribute(Key, FSchemaVariant(Value));
+}
+
+void ULobbySubsystem::ModifyLobbyAttribute(const FString& Key, FSchemaVariant Value)
+{
+	if (!EnsureLoggedInAndReady(false))
+	{
+		if (bServicesReady)
+		{
+			ReportError(TEXT("SetLobbyAttribute"), TEXT("Not logged in"));
+		}
+		return;
+	}
+	if (!CachedNativeLobbyId.IsValid())
+	{
+		ReportError(TEXT("SetLobbyAttribute"), TEXT("No active lobby"));
+		return;
+	}
+
+	FModifyLobbyAttributes::Params Params;
+	Params.LocalAccountId = LocalAccountId;
+	Params.LobbyId = CachedNativeLobbyId;
+	Params.UpdatedAttributes.Add(FSchemaAttributeId(*Key), MoveTemp(Value));
+	Lobbies->ModifyLobbyAttributes(MoveTemp(Params))
+		.OnComplete(this, [this, Key](const TOnlineResult<FModifyLobbyAttributes>& Result)
+			{
+				if (!Result.IsOk())
+				{
+					ReportError(
+						TEXT("SetLobbyAttribute"),
+						FString::Printf(TEXT("Attribute '%s': %s"), *Key, *Result.GetErrorValue().GetLogString()));
+				}
+			});
+}
+
+void ULobbySubsystem::ModifyLobbyMemberAttribute(const FString& Key, FSchemaVariant Value)
+{
+	if (!EnsureLoggedInAndReady(false))
+	{
+		if (bServicesReady)
+		{
+			ReportError(TEXT("SetMemberAttribute"), TEXT("Not logged in"));
+		}
+		return;
+	}
+	if (!CachedNativeLobbyId.IsValid())
+	{
+		ReportError(TEXT("SetMemberAttribute"), TEXT("No active lobby"));
+		return;
+	}
+
 	FModifyLobbyMemberAttributes::Params Params;
 	Params.LocalAccountId = LocalAccountId;
 	Params.LobbyId = CachedNativeLobbyId;
-	Params.UpdatedAttributes.Add(FSchemaAttributeId(*Key), FSchemaVariant(Value));
-	Lobbies->ModifyLobbyMemberAttributes(MoveTemp(Params));
+	Params.UpdatedAttributes.Add(FSchemaAttributeId(*Key), MoveTemp(Value));
+	Lobbies->ModifyLobbyMemberAttributes(MoveTemp(Params))
+		.OnComplete(this, [this, Key](const TOnlineResult<FModifyLobbyMemberAttributes>& Result)
+			{
+				if (!Result.IsOk())
+				{
+					ReportError(
+						TEXT("SetMemberAttribute"),
+						FString::Printf(TEXT("Attribute '%s': %s"), *Key, *Result.GetErrorValue().GetLogString()));
+				}
+			});
 }
 
 void ULobbySubsystem::OnLobbyAttributeUpdated(const FString& Name, FOnLobbyAttributeUpdatedDelegate OnUpdated)
@@ -536,26 +591,60 @@ bool ULobbySubsystem::GetCurrentJoinedLobbyNative(TSharedPtr<const FLobby>& OutL
 
 void ULobbySubsystem::ShowFriendsOverlay()
 {
-	if (!EnsureLoggedInAndReady(true) || !ExternalUI.IsValid()) return;
+	if (!EnsureLoggedInAndReady(true))
+	{
+		if (bServicesReady)
+		{
+			ReportError(TEXT("ShowFriendsOverlay"), TEXT("Not logged in"));
+		}
+		return;
+	}
+	if (!ExternalUI.IsValid())
+	{
+		ReportError(TEXT("ShowFriendsOverlay"), TEXT("Friends overlay is unavailable"));
+		return;
+	}
 
 	FExternalUIShowFriendsUI::Params Params;
 	Params.LocalAccountId = LocalAccountId;
-	ExternalUI->ShowFriendsUI(MoveTemp(Params));
+	ExternalUI->ShowFriendsUI(MoveTemp(Params))
+		.OnComplete(this, [this](const TOnlineResult<FExternalUIShowFriendsUI>& Result)
+			{
+				if (!Result.IsOk())
+				{
+					ReportError(TEXT("ShowFriendsOverlay"), Result.GetErrorValue().GetLogString());
+				}
+			});
 }
 
 void ULobbySubsystem::ShowLoginOverlay()
 {
-	if (!ExternalUI.IsValid()) return;
+	if (!ExternalUI.IsValid())
+	{
+		ReportError(TEXT("ShowLoginOverlay"), TEXT("Login overlay is unavailable"));
+		return;
+	}
 
 	UGameInstance* GI = GetGameInstance();
 	ULocalPlayer* LocalPlayer = GI ? GI->GetFirstGamePlayer() : nullptr;
-	if (!LocalPlayer) return;
+	if (!LocalPlayer)
+	{
+		ReportError(TEXT("ShowLoginOverlay"), TEXT("Local player is unavailable"));
+		return;
+	}
 
 	FExternalUIShowLoginUI::Params Params;
 	Params.PlatformUserId = LocalPlayer->GetPlatformUserId();
 	Params.Scopes = {};
 
-	ExternalUI->ShowLoginUI(MoveTemp(Params));
+	ExternalUI->ShowLoginUI(MoveTemp(Params))
+		.OnComplete(this, [this](const TOnlineResult<FExternalUIShowLoginUI>& Result)
+			{
+				if (!Result.IsOk())
+				{
+					ReportError(TEXT("ShowLoginOverlay"), Result.GetErrorValue().GetLogString());
+				}
+			});
 }
 
 // =============================================================================
@@ -564,7 +653,11 @@ void ULobbySubsystem::ShowLoginOverlay()
 
 void ULobbySubsystem::HandleUILobbyJoinRequested(const UE::Online::FUILobbyJoinRequested& EventParams)
 {
-	if (!EventParams.Result.IsOk()) return;
+	if (!EventParams.Result.IsOk())
+	{
+		ReportError(TEXT("JoinLobby"), EventParams.Result.GetErrorValue().GetLogString());
+		return;
+	}
 
 	const TSharedRef<const FLobby>& TargetLobbyRef = EventParams.Result.GetOkValue();
 	const FString TargetLobbyIdStr = LobbyIdToString(TargetLobbyRef->LobbyId);
@@ -574,6 +667,7 @@ void ULobbySubsystem::HandleUILobbyJoinRequested(const UE::Online::FUILobbyJoinR
 	if (!LocalAccountId.IsValid())
 	{
 		UE_LOG(LogLobbySubsystem, Warning, TEXT("Invite accepted, but not logged in."));
+		ReportError(TEXT("JoinLobby"), TEXT("Invite accepted, but not logged in"));
 		return;
 	}
 
@@ -595,7 +689,7 @@ void ULobbySubsystem::HandleUILobbyJoinRequested(const UE::Online::FUILobbyJoinR
 						if (!Result.IsOk() && WeakThis.IsValid())
 						{
 							FString ErrorStr = Result.GetErrorValue().GetLogString();
-							WeakThis->OnOnlineError.Broadcast(FString::Printf(TEXT("JoinLobby failed: %s"), *ErrorStr));
+							WeakThis->ReportError(TEXT("JoinLobby"), ErrorStr);
 						}
 					});
 		};
@@ -604,7 +698,13 @@ void ULobbySubsystem::HandleUILobbyJoinRequested(const UE::Online::FUILobbyJoinR
 	GetParams.LocalAccountId = LocalAccountId;
 	const TOnlineResult<FGetJoinedLobbies> JoinedResult = Lobbies->GetJoinedLobbies(MoveTemp(GetParams));
 
-	if (JoinedResult.IsOk() && JoinedResult.GetOkValue().Lobbies.Num() > 0)
+	if (!JoinedResult.IsOk())
+	{
+		ReportError(TEXT("JoinLobby"), JoinedResult.GetErrorValue().GetLogString());
+		return;
+	}
+
+	if (JoinedResult.GetOkValue().Lobbies.Num() > 0)
 	{
 		FLeaveLobby::Params LeaveParams;
 		LeaveParams.LocalAccountId = LocalAccountId;
@@ -614,12 +714,18 @@ void ULobbySubsystem::HandleUILobbyJoinRequested(const UE::Online::FUILobbyJoinR
 		CachedNativeLobbyId = FLobbyId{};
 		CachedLobby = FIsotopeLobbyBP{};
 
-		Lobbies->LeaveLobby(MoveTemp(LeaveParams)).OnComplete([WeakThis, ExecuteJoin](const TOnlineResult<FLeaveLobby>&)
+		Lobbies->LeaveLobby(MoveTemp(LeaveParams)).OnComplete([WeakThis, ExecuteJoin](const TOnlineResult<FLeaveLobby>& Result)
 			{
-				if (WeakThis.IsValid())
+				if (!WeakThis.IsValid())
 				{
-					ExecuteJoin();
+					return;
 				}
+				if (!Result.IsOk())
+				{
+					WeakThis->ReportError(TEXT("JoinLobby"), Result.GetErrorValue().GetLogString());
+					return;
+				}
+				ExecuteJoin();
 			});
 	}
 	else
@@ -734,19 +840,9 @@ void EOS_CALL ULobbySubsystem::OnLeaveLobbyRequestedCallback(const EOS_Lobby_Lea
 	if (This) This->HandleEOSLeaveLobbyRequested(Data->LobbyId);
 }
 
-void ULobbySubsystem::HandleEOSLeaveLobbyRequested(const char* LobbyId)
+void ULobbySubsystem::HandleEOSLeaveLobbyRequested(const char*)
 {
-	if (!LocalAccountId.IsValid() || !CachedNativeLobbyId.IsValid()) return;
-
-	const FIsotopeLobbyBP PreviousLobby = CachedLobby;
-
-	FLeaveLobby::Params Params;
-	Params.LocalAccountId = LocalAccountId;
-	Params.LobbyId = CachedNativeLobbyId;
-
-
-	Lobbies->LeaveLobby(MoveTemp(Params));
-
+	LeaveLobby();
 }
 
 void ULobbySubsystem::ConnectToSessionById(const FString& SessionIdStr, const FString& JoinTicket)
@@ -754,20 +850,27 @@ void ULobbySubsystem::ConnectToSessionById(const FString& SessionIdStr, const FS
 	UE_LOG(LogLobbySubsystem, Log, TEXT("Session connection requested. SessionId=%s"), *SessionIdStr);
 	if (SessionIdStr.IsEmpty())
 	{
-		OnSessionJoinFailed.Broadcast(SessionIdStr, TEXT("SessionId is empty"));
+		ReportSessionJoinFailure(SessionIdStr, TEXT("SessionId is empty"));
 		return;
 	}
 	UE_LOG(LogLobbySubsystem, Log, TEXT("Online Services initialized"));
 
 	if (JoinTicket.IsEmpty())
 	{
-		OnSessionJoinFailed.Broadcast(SessionIdStr, TEXT("JoinTicket is empty"));
+		ReportSessionJoinFailure(SessionIdStr, TEXT("JoinTicket is empty"));
 		return;
 	}
 
 	if (!EnsureLoggedInAndReady(true))
 	{
-		OnSessionJoinFailed.Broadcast(SessionIdStr, TEXT("Not logged in"));
+		if (bServicesReady)
+		{
+			ReportSessionJoinFailure(SessionIdStr, TEXT("Not logged in"));
+		}
+		else
+		{
+			OnSessionJoinFailed.Broadcast(SessionIdStr);
+		}
 		return;
 	}
 
@@ -780,7 +883,7 @@ void ULobbySubsystem::ConnectToSessionById(const FString& SessionIdStr, const FS
 
 		if (!Sessions.IsValid())
 		{
-			OnSessionJoinFailed.Broadcast(SessionIdStr, TEXT("Sessions interface not available"));
+			ReportSessionJoinFailure(SessionIdStr, TEXT("Sessions interface not available"));
 			return;
 		}
 	}
@@ -813,13 +916,13 @@ void ULobbySubsystem::ConnectToSessionById(const FString& SessionIdStr, const FS
 					{
 						const FString ErrorStr = FindResult.GetErrorValue().GetLogString();
 						UE_LOG(LogLobbySubsystem, Error, TEXT("FindSessions failed: %s"), *ErrorStr);
-						This->OnSessionJoinFailed.Broadcast(SessionIdStr, ErrorStr);
+						This->ReportSessionJoinFailure(SessionIdStr, ErrorStr);
 						return;
 					}
 
 					if (FindResult.GetOkValue().FoundSessionIds.IsEmpty())
 					{
-						This->OnSessionJoinFailed.Broadcast(SessionIdStr, TEXT("Session not found"));
+						This->ReportSessionJoinFailure(SessionIdStr, TEXT("Session not found"));
 						return;
 					}
 
@@ -852,7 +955,7 @@ void ULobbySubsystem::ConnectToSessionById(const FString& SessionIdStr, const FS
 					const FString ErrorStr = Result.GetErrorValue().GetLogString();
 
 					UE_LOG(LogLobbySubsystem, Error, TEXT("JoinSession failed: %s"), *ErrorStr);
-					This->OnSessionJoinFailed.Broadcast(SessionIdStr, ErrorStr);
+					This->ReportSessionJoinFailure(SessionIdStr, ErrorStr);
 					return;
 				}
 
@@ -862,7 +965,7 @@ void ULobbySubsystem::ConnectToSessionById(const FString& SessionIdStr, const FS
 					const FString ErrorStr = SessionResult.GetErrorValue().GetLogString();
 
 					UE_LOG(LogLobbySubsystem, Error, TEXT("GetSessionById failed: %s"), *ErrorStr);
-					This->OnSessionJoinFailed.Broadcast(SessionIdStr, ErrorStr);
+					This->ReportSessionJoinFailure(SessionIdStr, ErrorStr);
 					return;
 				}
 
@@ -871,7 +974,7 @@ void ULobbySubsystem::ConnectToSessionById(const FString& SessionIdStr, const FS
 
 				if (!HostAddressSetting || HostAddressSetting->Data.GetType() != ESchemaAttributeType::String)
 				{
-					This->OnSessionJoinFailed.Broadcast(SessionIdStr, TEXT("Session host address is missing"));
+					This->ReportSessionJoinFailure(SessionIdStr, TEXT("Session host address is missing"));
 					return;
 				}
 
@@ -879,7 +982,7 @@ void ULobbySubsystem::ConnectToSessionById(const FString& SessionIdStr, const FS
 
 				if (ConnectString.IsEmpty())
 				{
-					This->OnSessionJoinFailed.Broadcast(SessionIdStr, TEXT("Session host address is empty"));
+					This->ReportSessionJoinFailure(SessionIdStr, TEXT("Session host address is empty"));
 					return;
 				}
 
@@ -890,7 +993,7 @@ void ULobbySubsystem::ConnectToSessionById(const FString& SessionIdStr, const FS
 
 				if (!PC)
 				{
-					This->OnSessionJoinFailed.Broadcast(SessionIdStr, TEXT("No local PlayerController for ClientTravel"));
+					This->ReportSessionJoinFailure(SessionIdStr, TEXT("No local PlayerController for ClientTravel"));
 					return;
 				}
 
@@ -1111,9 +1214,19 @@ FString ULobbySubsystem::GetPlayerPUID(APlayerState* PlayerState) const
 
 void ULobbySubsystem::QueryExternalAuthCredential(FOnExternalAuthCredentialReady Completion)
 {
-	if (!EnsureLoggedInAndReady(false) || !Auth.IsValid())
+	if (!EnsureLoggedInAndReady(false))
 	{
-		Completion.ExecuteIfBound(false, TEXT(""), TEXT(""), TEXT("EOS Auth is unavailable"));
+		if (bServicesReady)
+		{
+			ReportError(TEXT("QueryExternalAuthCredential"), TEXT("Not logged in"));
+		}
+		Completion.ExecuteIfBound(false, TEXT(""), TEXT(""));
+		return;
+	}
+	if (!Auth.IsValid())
+	{
+		ReportError(TEXT("QueryExternalAuthCredential"), TEXT("EOS Auth is unavailable"));
+		Completion.ExecuteIfBound(false, TEXT(""), TEXT(""));
 		return;
 	}
 
@@ -1122,17 +1235,43 @@ void ULobbySubsystem::QueryExternalAuthCredential(FOnExternalAuthCredentialReady
 	Params.Method = EExternalAuthTokenMethod::Primary;
 
 	Auth->QueryExternalAuthToken(MoveTemp(Params))
-		.OnComplete(this, [Completion](const TOnlineResult<FAuthQueryExternalAuthToken>& Result) mutable
+		.OnComplete(this, [this, Completion](const TOnlineResult<FAuthQueryExternalAuthToken>& Result) mutable
 			{
 				if (!Result.IsOk())
 				{
-					Completion.ExecuteIfBound(false, TEXT(""), TEXT(""), Result.GetErrorValue().GetLogString());
+					ReportError(TEXT("QueryExternalAuthCredential"), Result.GetErrorValue().GetLogString());
+					Completion.ExecuteIfBound(false, TEXT(""), TEXT(""));
 					return;
 				}
 
 				const FExternalAuthToken& Token = Result.GetOkValue().ExternalAuthToken;
-				Completion.ExecuteIfBound(true, Token.Type.ToString(), Token.Data, TEXT(""));
+				Completion.ExecuteIfBound(true, Token.Type.ToString(), Token.Data);
 			});
+}
+
+void ULobbySubsystem::ReportError(
+	const FString& Method,
+	const FString& ErrorMessage)
+{
+	FIsotopeError Error;
+	Error.Method = Method;
+	Error.Error = ErrorMessage.IsEmpty() ? TEXT("Unknown online error") : ErrorMessage;
+	UE_LOG(
+		LogLobbySubsystem,
+		Error,
+		TEXT("Online error emitted. Bound=%s Method=%s Error=%s"),
+		OnError.IsBound() ? TEXT("true") : TEXT("false"),
+		*Error.Method,
+		*Error.Error);
+	OnError.Broadcast(Error);
+}
+
+void ULobbySubsystem::ReportSessionJoinFailure(
+	const FString& SessionId,
+	const FString& Error)
+{
+	ReportError(TEXT("ConnectToSessionById"), Error);
+	OnSessionJoinFailed.Broadcast(SessionId);
 }
 
 FString ULobbySubsystem::GetNativeEOSProductUserId(const UE::Online::FAccountId& AccountId) const

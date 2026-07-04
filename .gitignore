@@ -4,7 +4,8 @@ DerivedDataCache
 TestBuilds
 Intermediate
 Saved
-Restricted/NotForLicensees/
+Config/GeneratedEngine.ini
+Config/DedicatedServerEngine.ini
 Windows
 *.pub
 *.zip

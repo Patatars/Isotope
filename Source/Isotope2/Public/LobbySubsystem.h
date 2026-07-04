@@ -1,6 +1,7 @@
 ﻿#pragma once
 
 #include "CoreMinimal.h"
+#include "IsotopeError.h"
 #include "Subsystems/GameInstanceSubsystem.h"
 #include "Online/Sessions.h"
 #include "Online/OnlineServices.h"
@@ -108,7 +109,7 @@ struct FIsotopeLobbyBP
 };
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIsotopeLoginSuccess, const FString&, AccountId);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIsotopeLoginFailed, const FString&, ErrorText);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnIsotopeLoginFailed);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIsotopeSimpleResult, const FString&, Message);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIsotopeLobbyChanged, const FIsotopeLobbyBP&, Lobby);
@@ -117,10 +118,10 @@ DECLARE_DYNAMIC_DELEGATE_OneParam(FOnLobbyAttributeUpdatedDelegate, const FIsoto
 DECLARE_DYNAMIC_DELEGATE_TwoParams(FOnLobbyMemberAttributeUpdatedDelegate, const FIsotopeLobbyMemberBP&, Member, const FIsotopeAttribute&, Attribute);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnIsotopeLobbyInviteAccepted, const FString&, LobbyIdStr);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDisplayNameReady, FString, AccountId, FString, DisplayName);
-DECLARE_DYNAMIC_DELEGATE_FourParams(FOnExternalAuthCredentialReady, bool, bSuccess, const FString&, CredentialType, const FString&, Credential, const FString&, Error);
+DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnExternalAuthCredentialReady, bool, bSuccess, const FString&, CredentialType, const FString&, Credential);
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSessionJoinStarted, const FString&, SessionId);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSessionJoinFailed, const FString&, SessionId, const FString&, Error);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSessionJoinFailed, const FString&, SessionId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSessionJoinSucceeded, const FString&, SessionId, const FString&, ConnectString);
 
 UCLASS()
@@ -169,7 +170,7 @@ public:
 	FOnIsotopeLobbyInviteAccepted OnLobbyInviteAccepted;
 
 	UPROPERTY(BlueprintAssignable, Category = "Isotope|Lobby")
-	FOnIsotopeSimpleResult OnOnlineError;
+	FOnIsotopeError OnError;
 
 	UPROPERTY(BlueprintAssignable, Category = "EOS|Sessions")
 	FOnSessionJoinStarted OnSessionJoinStarted;
@@ -284,6 +285,10 @@ private:
 	FIsotopeAttribute ConvertVariantToAttribute(const FString& Key, const UE::Online::FSchemaVariant& Variant) const;
 	void BroadcastLobbyAttributeUpdated(const UE::Online::FSchemaAttributeId& AttributeId, const UE::Online::FSchemaVariant& Value);
 	void BroadcastLobbyMemberAttributeUpdated(const FIsotopeLobbyMemberBP& Member, const UE::Online::FSchemaAttributeId& AttributeId, const UE::Online::FSchemaVariant& Value);
+	void ModifyLobbyAttribute(const FString& Key, UE::Online::FSchemaVariant Value);
+	void ModifyLobbyMemberAttribute(const FString& Key, UE::Online::FSchemaVariant Value);
+	void ReportError(const FString& Method, const FString& Error);
+	void ReportSessionJoinFailure(const FString& SessionId, const FString& Error);
 
 private:
 	// --- ХЭНДЛЫ НАТИВНЫХ СОБЫТИЙ ONLINE SERVICES (OSSv2) ---
