@@ -52,6 +52,11 @@ void UMatchmakingSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 void UMatchmakingSubsystem::Deinitialize()
 {
 	UE_LOG(LogMatchmakingSubsystem, Log, TEXT("Deinitializing"));
+	if (bSocketConnected && !ConnectedLobbyId.IsEmpty() && !GameAuthToken.IsEmpty())
+	{
+		UE_LOG(LogMatchmakingSubsystem, Log, TEXT("Cancelling matchmaking before deinitialization. LobbyId=%s"), *ConnectedLobbyId);
+		CancelMatchmaking(ConnectedLobbyId, FOnBackendOperationComplete());
+	}
 	DisconnectLobbySocket();
 	GameAuthToken.Empty();
 	AuthenticatedPUID.Empty();

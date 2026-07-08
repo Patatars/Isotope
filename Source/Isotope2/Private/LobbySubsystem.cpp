@@ -845,6 +845,62 @@ void ULobbySubsystem::HandleEOSLeaveLobbyRequested(const char*)
 	LeaveLobby();
 }
 
+void ULobbySubsystem::LeaveGameSession(FOnGameSessionLeaveComplete Completion)
+{
+	UE_LOG(LogLobbySubsystem, Log, TEXT("Game session cleanup requested"));
+	if (!Sessions.IsValid())
+	{
+		InitializeOnlineServices();
+	}
+	if (!Sessions.IsValid())
+	{
+		ReportError(TEXT("LeaveGameSession"), TEXT("Sessions interface not available"));
+		Completion.ExecuteIfBound(false);
+		return;
+	}
+
+	const FName SessionName(TEXT("GameSession"));
+	const TOnlineResult<FGetSessionByName> ExistingSession = Sessions->GetSessionByName({ SessionName });
+	if (!ExistingSession.IsOk())
+	{
+		UE_LOG(LogLobbySubsystem, Log, TEXT("Game session cleanup skipped: no local GameSession exists"));
+		Completion.ExecuteIfBound(true);
+		return;
+	}
+
+	if (!LocalAccountId.IsValid() && !ResolveLocalAccountFromAuthCache())
+	{
+		ReportError(TEXT("LeaveGameSession"), TEXT("Local account is unavailable"));
+		Completion.ExecuteIfBound(false);
+		return;
+	}
+
+	FLeaveSession::Params Params;
+	Params.LocalAccountId = LocalAccountId;
+	Params.SessionName = SessionName;
+	Params.bDestroySession = false;
+
+	TWeakObjectPtr<ULobbySubsystem> WeakThis(this);
+	Sessions->LeaveSession(MoveTemp(Params))
+		.OnComplete(this, [WeakThis, Completion](const TOnlineResult<FLeaveSession>& Result) mutable
+			{
+				if (!WeakThis.IsValid())
+				{
+					return;
+				}
+
+				if (!Result.IsOk())
+				{
+					WeakThis->ReportError(TEXT("LeaveGameSession"), Result.GetErrorValue().GetLogString());
+					Completion.ExecuteIfBound(false);
+					return;
+				}
+
+				UE_LOG(LogLobbySubsystem, Log, TEXT("Local GameSession left successfully"));
+				Completion.ExecuteIfBound(true);
+			});
+}
+
 void ULobbySubsystem::ConnectToSessionById(const FString& SessionIdStr, const FString& JoinTicket)
 {
 	UE_LOG(LogLobbySubsystem, Log, TEXT("Session connection requested. SessionId=%s"), *SessionIdStr);

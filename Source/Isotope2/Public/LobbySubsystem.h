@@ -123,6 +123,7 @@ DECLARE_DYNAMIC_DELEGATE_ThreeParams(FOnExternalAuthCredentialReady, bool, bSucc
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSessionJoinStarted, const FString&, SessionId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSessionJoinFailed, const FString&, SessionId);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnSessionJoinSucceeded, const FString&, SessionId, const FString&, ConnectString);
+DECLARE_DYNAMIC_DELEGATE_OneParam(FOnGameSessionLeaveComplete, bool, bSuccess);
 
 UCLASS()
 class ISOTOPE2_API ULobbySubsystem : public UGameInstanceSubsystem
@@ -265,6 +266,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "EOS|Sessions")
 	void ConnectToSessionById(const FString& SessionId, const FString& JoinTicket);
+
+	UFUNCTION(BlueprintCallable, Category = "EOS|Sessions")
+	void LeaveGameSession(FOnGameSessionLeaveComplete Completion);
 
 
 
