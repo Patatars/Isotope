@@ -1,0 +1,522 @@
+[
+  {
+    "key": "A",
+    "label": "A",
+    "file": "T_Key_A.png"
+  },
+  {
+    "key": "B",
+    "label": "B",
+    "file": "T_Key_B.png"
+  },
+  {
+    "key": "C",
+    "label": "C",
+    "file": "T_Key_C.png"
+  },
+  {
+    "key": "D",
+    "label": "D",
+    "file": "T_Key_D.png"
+  },
+  {
+    "key": "E",
+    "label": "E",
+    "file": "T_Key_E.png"
+  },
+  {
+    "key": "F",
+    "label": "F",
+    "file": "T_Key_F.png"
+  },
+  {
+    "key": "G",
+    "label": "G",
+    "file": "T_Key_G.png"
+  },
+  {
+    "key": "H",
+    "label": "H",
+    "file": "T_Key_H.png"
+  },
+  {
+    "key": "I",
+    "label": "I",
+    "file": "T_Key_I.png"
+  },
+  {
+    "key": "J",
+    "label": "J",
+    "file": "T_Key_J.png"
+  },
+  {
+    "key": "K",
+    "label": "K",
+    "file": "T_Key_K.png"
+  },
+  {
+    "key": "L",
+    "label": "L",
+    "file": "T_Key_L.png"
+  },
+  {
+    "key": "M",
+    "label": "M",
+    "file": "T_Key_M.png"
+  },
+  {
+    "key": "N",
+    "label": "N",
+    "file": "T_Key_N.png"
+  },
+  {
+    "key": "O",
+    "label": "O",
+    "file": "T_Key_O.png"
+  },
+  {
+    "key": "P",
+    "label": "P",
+    "file": "T_Key_P.png"
+  },
+  {
+    "key": "Q",
+    "label": "Q",
+    "file": "T_Key_Q.png"
+  },
+  {
+    "key": "R",
+    "label": "R",
+    "file": "T_Key_R.png"
+  },
+  {
+    "key": "S",
+    "label": "S",
+    "file": "T_Key_S.png"
+  },
+  {
+    "key": "T",
+    "label": "T",
+    "file": "T_Key_T.png"
+  },
+  {
+    "key": "U",
+    "label": "U",
+    "file": "T_Key_U.png"
+  },
+  {
+    "key": "V",
+    "label": "V",
+    "file": "T_Key_V.png"
+  },
+  {
+    "key": "W",
+    "label": "W",
+    "file": "T_Key_W.png"
+  },
+  {
+    "key": "X",
+    "label": "X",
+    "file": "T_Key_X.png"
+  },
+  {
+    "key": "Y",
+    "label": "Y",
+    "file": "T_Key_Y.png"
+  },
+  {
+    "key": "Z",
+    "label": "Z",
+    "file": "T_Key_Z.png"
+  },
+  {
+    "key": "0",
+    "label": "0",
+    "file": "T_Key_0.png"
+  },
+  {
+    "key": "1",
+    "label": "1",
+    "file": "T_Key_1.png"
+  },
+  {
+    "key": "2",
+    "label": "2",
+    "file": "T_Key_2.png"
+  },
+  {
+    "key": "3",
+    "label": "3",
+    "file": "T_Key_3.png"
+  },
+  {
+    "key": "4",
+    "label": "4",
+    "file": "T_Key_4.png"
+  },
+  {
+    "key": "5",
+    "label": "5",
+    "file": "T_Key_5.png"
+  },
+  {
+    "key": "6",
+    "label": "6",
+    "file": "T_Key_6.png"
+  },
+  {
+    "key": "7",
+    "label": "7",
+    "file": "T_Key_7.png"
+  },
+  {
+    "key": "8",
+    "label": "8",
+    "file": "T_Key_8.png"
+  },
+  {
+    "key": "9",
+    "label": "9",
+    "file": "T_Key_9.png"
+  },
+  {
+    "key": "F1",
+    "label": "F1",
+    "file": "T_Key_F1.png"
+  },
+  {
+    "key": "F2",
+    "label": "F2",
+    "file": "T_Key_F2.png"
+  },
+  {
+    "key": "F3",
+    "label": "F3",
+    "file": "T_Key_F3.png"
+  },
+  {
+    "key": "F4",
+    "label": "F4",
+    "file": "T_Key_F4.png"
+  },
+  {
+    "key": "F5",
+    "label": "F5",
+    "file": "T_Key_F5.png"
+  },
+  {
+    "key": "F6",
+    "label": "F6",
+    "file": "T_Key_F6.png"
+  },
+  {
+    "key": "F7",
+    "label": "F7",
+    "file": "T_Key_F7.png"
+  },
+  {
+    "key": "F8",
+    "label": "F8",
+    "file": "T_Key_F8.png"
+  },
+  {
+    "key": "F9",
+    "label": "F9",
+    "file": "T_Key_F9.png"
+  },
+  {
+    "key": "F10",
+    "label": "F10",
+    "file": "T_Key_F10.png"
+  },
+  {
+    "key": "F11",
+    "label": "F11",
+    "file": "T_Key_F11.png"
+  },
+  {
+    "key": "F12",
+    "label": "F12",
+    "file": "T_Key_F12.png"
+  },
+  {
+    "key": "Escape",
+    "label": "ESC",
+    "file": "T_Key_Escape.png"
+  },
+  {
+    "key": "Tab",
+    "label": "TAB",
+    "file": "T_Key_Tab.png"
+  },
+  {
+    "key": "CapsLock",
+    "label": "CAPS",
+    "file": "T_Key_CapsLock.png"
+  },
+  {
+    "key": "LeftShift",
+    "label": "SHIFT",
+    "file": "T_Key_LeftShift.png"
+  },
+  {
+    "key": "RightShift",
+    "label": "SHIFT",
+    "file": "T_Key_RightShift.png"
+  },
+  {
+    "key": "LeftControl",
+    "label": "CTRL",
+    "file": "T_Key_LeftControl.png"
+  },
+  {
+    "key": "RightControl",
+    "label": "CTRL",
+    "file": "T_Key_RightControl.png"
+  },
+  {
+    "key": "LeftAlt",
+    "label": "ALT",
+    "file": "T_Key_LeftAlt.png"
+  },
+  {
+    "key": "RightAlt",
+    "label": "ALT",
+    "file": "T_Key_RightAlt.png"
+  },
+  {
+    "key": "SpaceBar",
+    "label": "SPACE",
+    "file": "T_Key_SpaceBar.png"
+  },
+  {
+    "key": "Enter",
+    "label": "ENTER",
+    "file": "T_Key_Enter.png"
+  },
+  {
+    "key": "BackSpace",
+    "label": "BACK",
+    "file": "T_Key_BackSpace.png"
+  },
+  {
+    "key": "Insert",
+    "label": "INS",
+    "file": "T_Key_Insert.png"
+  },
+  {
+    "key": "Delete",
+    "label": "DEL",
+    "file": "T_Key_Delete.png"
+  },
+  {
+    "key": "Home",
+    "label": "HOME",
+    "file": "T_Key_Home.png"
+  },
+  {
+    "key": "End",
+    "label": "END",
+    "file": "T_Key_End.png"
+  },
+  {
+    "key": "PageUp",
+    "label": "PG UP",
+    "file": "T_Key_PageUp.png"
+  },
+  {
+    "key": "PageDown",
+    "label": "PG DN",
+    "file": "T_Key_PageDown.png"
+  },
+  {
+    "key": "Up",
+    "label": "↑",
+    "file": "T_Key_Up.png"
+  },
+  {
+    "key": "Down",
+    "label": "↓",
+    "file": "T_Key_Down.png"
+  },
+  {
+    "key": "Left",
+    "label": "←",
+    "file": "T_Key_Left.png"
+  },
+  {
+    "key": "Right",
+    "label": "→",
+    "file": "T_Key_Right.png"
+  },
+  {
+    "key": "Hyphen",
+    "label": "−",
+    "file": "T_Key_Hyphen.png"
+  },
+  {
+    "key": "Equals",
+    "label": "=",
+    "file": "T_Key_Equals.png"
+  },
+  {
+    "key": "LeftBracket",
+    "label": "[",
+    "file": "T_Key_LeftBracket.png"
+  },
+  {
+    "key": "RightBracket",
+    "label": "]",
+    "file": "T_Key_RightBracket.png"
+  },
+  {
+    "key": "Backslash",
+    "label": "\\",
+    "file": "T_Key_Backslash.png"
+  },
+  {
+    "key": "Semicolon",
+    "label": ";",
+    "file": "T_Key_Semicolon.png"
+  },
+  {
+    "key": "Apostrophe",
+    "label": "'",
+    "file": "T_Key_Apostrophe.png"
+  },
+  {
+    "key": "Comma",
+    "label": ",",
+    "file": "T_Key_Comma.png"
+  },
+  {
+    "key": "Period",
+    "label": ".",
+    "file": "T_Key_Period.png"
+  },
+  {
+    "key": "Slash",
+    "label": "/",
+    "file": "T_Key_Slash.png"
+  },
+  {
+    "key": "Tilde",
+    "label": "~",
+    "file": "T_Key_Tilde.png"
+  },
+  {
+    "key": "NumPadZero",
+    "label": "NUM 0",
+    "file": "T_Key_NumPadZero.png"
+  },
+  {
+    "key": "NumPadOne",
+    "label": "NUM 1",
+    "file": "T_Key_NumPadOne.png"
+  },
+  {
+    "key": "NumPadTwo",
+    "label": "NUM 2",
+    "file": "T_Key_NumPadTwo.png"
+  },
+  {
+    "key": "NumPadThree",
+    "label": "NUM 3",
+    "file": "T_Key_NumPadThree.png"
+  },
+  {
+    "key": "NumPadFour",
+    "label": "NUM 4",
+    "file": "T_Key_NumPadFour.png"
+  },
+  {
+    "key": "NumPadFive",
+    "label": "NUM 5",
+    "file": "T_Key_NumPadFive.png"
+  },
+  {
+    "key": "NumPadSix",
+    "label": "NUM 6",
+    "file": "T_Key_NumPadSix.png"
+  },
+  {
+    "key": "NumPadSeven",
+    "label": "NUM 7",
+    "file": "T_Key_NumPadSeven.png"
+  },
+  {
+    "key": "NumPadEight",
+    "label": "NUM 8",
+    "file": "T_Key_NumPadEight.png"
+  },
+  {
+    "key": "NumPadNine",
+    "label": "NUM 9",
+    "file": "T_Key_NumPadNine.png"
+  },
+  {
+    "key": "Multiply",
+    "label": "NUM ×",
+    "file": "T_Key_Multiply.png"
+  },
+  {
+    "key": "Add",
+    "label": "NUM +",
+    "file": "T_Key_Add.png"
+  },
+  {
+    "key": "Subtract",
+    "label": "NUM −",
+    "file": "T_Key_Subtract.png"
+  },
+  {
+    "key": "Decimal",
+    "label": "NUM .",
+    "file": "T_Key_Decimal.png"
+  },
+  {
+    "key": "Divide",
+    "label": "NUM /",
+    "file": "T_Key_Divide.png"
+  },
+  {
+    "key": "NumLock",
+    "label": "NUM",
+    "file": "T_Key_NumLock.png"
+  },
+  {
+    "key": "LeftMouseButton",
+    "label": "LMB",
+    "file": "T_Key_LeftMouseButton.png"
+  },
+  {
+    "key": "RightMouseButton",
+    "label": "RMB",
+    "file": "T_Key_RightMouseButton.png"
+  },
+  {
+    "key": "MiddleMouseButton",
+    "label": "MMB",
+    "file": "T_Key_MiddleMouseButton.png"
+  },
+  {
+    "key": "ThumbMouseButton",
+    "label": "M4",
+    "file": "T_Key_ThumbMouseButton.png"
+  },
+  {
+    "key": "ThumbMouseButton2",
+    "label": "M5",
+    "file": "T_Key_ThumbMouseButton2.png"
+  },
+  {
+    "key": "MouseWheelUp",
+    "label": "MW ↑",
+    "file": "T_Key_MouseWheelUp.png"
+  },
+  {
+    "key": "MouseWheelDown",
+    "label": "MW ↓",
+    "file": "T_Key_MouseWheelDown.png"
+  }
+]
